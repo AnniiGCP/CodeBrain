@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: codebrain-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENVIRONMENT
+        value: production
+      - key: ALLOW_DEV_LOGIN
+        value: "false"
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_NIM_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APINEX_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_ID
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_OAUTH_REDIRECT_URI
+        sync: false
+      - key: TRUSTED_PROXIES
+        value: 10.0.0.0/8,172.16.0.0/12,127.0.0.1

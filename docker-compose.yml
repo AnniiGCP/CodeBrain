@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - EXECUTION_PROVIDER=${EXECUTION_PROVIDER:-docker}
+      - ISOLATED_RUNTIME_REQUIRED=${ISOLATED_RUNTIME_REQUIRED:-false}
+      - SANDBOX_DOCKER_IMAGE=${SANDBOX_DOCKER_IMAGE:-python:3.11-slim}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+      - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - APINEX_API_KEY=${APINEX_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID:-}
+      - GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
+      - GITHUB_OAUTH_REDIRECT_URI=${GITHUB_OAUTH_REDIRECT_URI:-http://localhost:8000/auth/github/callback}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - SESSION_SECRET=${SESSION_SECRET:-codebrain-super-secret-session-key-2026}
+      - DATABASE_URL=sqlite:///./app.db
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend/storage:/app/storage
+      - ./backend/app.db:/app/app.db
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"

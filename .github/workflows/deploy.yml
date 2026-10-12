@@ -1,0 +1,135 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Pre-Deployment Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio anyio
+
+      - name: Verify backend tests & security suite
+        working-directory: backend
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: sqlite:///./deploy_test.db
+          SESSION_SECRET: test-session-secret-for-deployment-gate-32-bytes
+          ALLOW_DEV_LOGIN: "false"
+        run: python -m pytest
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Verify frontend build
+        working-directory: frontend
+        run: npm run build
+
+  deploy-render:
+    name: Deploy Backend to Render
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy Hook
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          echo "Triggering Render production backend deployment..."
+          curl -f -X POST "${RENDER_DEPLOY_HOOK_URL}"
+          echo "Render deployment trigger sent successfully."
+
+      - name: Render Deploy Hook Notice
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          echo "NOTICE: RENDER_DEPLOY_HOOK_URL secret is not configured in GitHub repository secrets."
+          echo "If auto-deploy is enabled in Render Dashboard or render.yaml, Render will automatically deploy on push to main."
+
+  deploy-vercel:
+    name: Deploy Frontend to Vercel
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        if: env.VERCEL_TOKEN != ''
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          working-directory: ./frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Vercel Deploy Notice
+        if: env.VERCEL_TOKEN == ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          echo "NOTICE: VERCEL_TOKEN / VERCEL_ORG_ID secrets are not set in GitHub repository secrets."
+          echo "If Vercel is connected directly to your GitHub repository, Vercel will automatically build and deploy from main."
+
+  smoke-check:
+    name: Post-Deployment Smoke Check
+    needs: [deploy-render, deploy-vercel]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Backend Health Check
+        if: env.BACKEND_URL != ''
+        env:
+          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
+        run: |
+          echo "Checking $BACKEND_URL/health with bounded retries..."
+          for i in {1..10}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BACKEND_URL/health" || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend is live and responding (HTTP 200)!"
+              curl -s "$BACKEND_URL/health"
+              exit 0
+            fi
+            echo "Attempt $i: Backend returned HTTP $STATUS. Waiting 15s for spin-up/deployment..."
+            sleep 15
+          done
+          echo "Warning: Backend smoke test timed out after 150s. Cold start may still be in progress."
+
+      - name: Smoke Check Notice
+        if: env.BACKEND_URL == ''
+        env:
+          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
+        run: |
+          echo "NOTICE: RENDER_BACKEND_URL secret is not set. Configure it to enable automated post-deploy smoke testing."

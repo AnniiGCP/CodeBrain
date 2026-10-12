@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root {
+  /* CodeBrain Design System Tokens (Neutral Near-Black Developer IDE) */
+  --cb-page: #0c0d0e;
+  --cb-surface: #0c0d0e;
+  --cb-surface-raised: #0c0d0e;
+  --cb-surface-hover: #141518;
+  --cb-border: #1e1f23;
+  --cb-border-subtle: rgba(255, 255, 255, 0.06);
+  --cb-text: #f3f3f4;
+  --cb-text-secondary: #a1a1aa;
+  --cb-text-muted: #71717a;
+  --cb-accent: #8b5cf6;
+  --cb-success: #34d399;
+  --cb-danger: #f87171;
+
+  /* Mapped IDE Theme Variables - All Unified to #0c0d0e */
+  --bg-ide: #0c0d0e;
+  --bg-sidebar: #0c0d0e;
+  --bg-activity-bar: #0c0d0e;
+  --bg-editor: #0c0d0e;
+  --bg-tab-active: #0c0d0e;
+  --bg-tab-inactive: #0c0d0e;
+  --bg-tab-hover: #141518;
+  --bg-panel: #0c0d0e;
+  --bg-status-bar: #0c0d0e;
+  --border-color: var(--cb-border);
+  --border-subtle: var(--cb-border-subtle);
+  --accent-color: var(--cb-accent);
+  --accent-hover: #9f75ff;
+  --text-primary: var(--cb-text);
+  --text-muted: var(--cb-text-muted);
+  --text-bright: #ffffff;
+  --status-error: var(--cb-danger);
+  --status-warning: #fbbf24;
+  --status-info: #60a5fa;
+  --status-success: var(--cb-success);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-ide);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-height: 100vh;
+}
+
+/* Custom Scrollbars matching VS Code */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.4);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 100, 100, 0.7);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Monospace text */
+.font-mono {
+  font-family: "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace;
+}
+
+/* Tab active indicator */
+.tab-active-top-border {
+  border-top: 2px solid var(--accent-color);
+}
+
+/* Activity bar active border (Purple accent matching screenshot) */
+.activity-bar-active {
+  border-left: 2px solid var(--cb-accent);
+  color: #ffffff;
+  background-color: #0c0d0e;
+}
+
+/* Resizable divider style */
+.resize-handle {
+  position: relative;
+  background-color: var(--border-color);
+  transition: background-color 0.15s ease;
+  z-index: 10;
+}
+
+.resize-handle:hover,
+.resize-handle[data-resize-handle-active] {
+  background-color: var(--accent-color);
+}
+
+/* Chat text selection enablement */
+.chat-selectable,
+.chat-selectable * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}

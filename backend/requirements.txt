@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+gitpython
+tree-sitter
+tree-sitter-languages
+faiss-cpu
+sentence-transformers
+groq
+sqlalchemy
+pydantic
+httpx
+cryptography
+python-dotenv
+reportlab
+psycopg2-binary

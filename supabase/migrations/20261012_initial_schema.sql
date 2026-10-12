@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS error_reports (
     symbol_type VARCHAR(64),
     language VARCHAR(64),
     line INTEGER,
-    column INTEGER,
+    "column" INTEGER,
     stack_trace TEXT,
     explanation TEXT,
     suggested_fix TEXT,
@@ -268,16 +268,19 @@ ALTER TABLE repos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE error_reports ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Enable all access for backend service" ON repos;
 CREATE POLICY "Enable all access for backend service" ON repos
     FOR ALL
     USING (true)
     WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Enable all access for backend service" ON conversations;
 CREATE POLICY "Enable all access for backend service" ON conversations
     FOR ALL
     USING (true)
     WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Enable all access for backend service" ON error_reports;
 CREATE POLICY "Enable all access for backend service" ON error_reports
     FOR ALL
     USING (true)

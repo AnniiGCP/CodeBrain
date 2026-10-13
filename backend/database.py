@@ -7,9 +7,12 @@ logger = logging.getLogger("codebrain.database")
 
 RAW_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./app.db").strip()
 
-# SQLAlchemy 1.4+ / 2.0 requires postgresql:// instead of legacy postgres://
+# SQLAlchemy 1.4+ / 2.0 driver compatibility:
+# Map postgres:// or generic postgresql:// to explicit postgresql+psycopg2:// driver
 if RAW_DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = RAW_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = RAW_DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif RAW_DATABASE_URL.startswith("postgresql://") and not RAW_DATABASE_URL.startswith("postgresql+"):
+    DATABASE_URL = RAW_DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 else:
     DATABASE_URL = RAW_DATABASE_URL
 

@@ -424,7 +424,16 @@ def get_optional_user(
     if not user_id:
         return None
 
-    user = db.query(User).filter(User.id == user_id).first()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+    except Exception as exc:
+        logger.warning("Could not query optional user from database: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
+
     if not user:
         return None
 

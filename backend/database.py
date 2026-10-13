@@ -47,12 +47,20 @@ if DATABASE_URL.startswith("sqlite"):
 else:
     # Production PostgreSQL / Supabase connection pooling
     is_supabase_pooler = ":6543" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL
+    pg_connect_args = {
+        "connect_timeout": 10,
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    }
     if is_supabase_pooler or os.environ.get("DB_USE_NULLPOOL", "").lower() in ("true", "1", "yes"):
         from sqlalchemy.pool import NullPool
         engine = create_engine(
             DATABASE_URL,
             poolclass=NullPool,
-            connect_args={"connect_timeout": 10},
+            pool_pre_ping=True,
+            connect_args=pg_connect_args,
         )
     else:
         pool_size = int(os.environ.get("DB_POOL_SIZE", "10"))
@@ -64,7 +72,7 @@ else:
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_recycle=pool_recycle,
-            connect_args={"connect_timeout": 10},
+            connect_args=pg_connect_args,
         )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

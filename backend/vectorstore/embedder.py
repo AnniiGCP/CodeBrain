@@ -37,6 +37,8 @@ def get_model():
     try:
         import torch
         torch.set_num_threads(1)
+        if hasattr(torch, "set_grad_enabled"):
+            torch.set_grad_enabled(False)
     except Exception:
         pass
 
@@ -61,17 +63,43 @@ def _l2_normalize(arr: np.ndarray) -> np.ndarray:
     return arr / norms
 
 
+def _hash_embed(texts: list[str], dim: int = 384) -> np.ndarray:
+    """Lightweight deterministic feature embedding for low-memory environments."""
+    if not texts:
+        return np.zeros((0, dim), dtype=np.float32)
+    vectors = np.zeros((len(texts), dim), dtype=np.float32)
+    for i, t in enumerate(texts):
+        words = t.split()
+        if not words:
+            continue
+        for w in words:
+            h = abs(hash(w)) % dim
+            vectors[i, h] += 1.0
+    return _l2_normalize(vectors)
+
+
 def embed_texts(texts: list[str]) -> np.ndarray:
     """Encode a list of texts → float32 array, L2-normalised (for inner-product == cosine)."""
-    model = get_model()
-    vecs = model.encode(
-        texts,
-        batch_size=64,
-        show_progress_bar=False,
-        normalize_embeddings=False,
-        convert_to_numpy=True,
-    ).astype(np.float32)
-    return _l2_normalize(vecs)
+    if not texts:
+        return np.zeros((0, 384), dtype=np.float32)
+    try:
+        import torch
+        with torch.no_grad():
+            model = get_model()
+            vecs = model.encode(
+                texts,
+                batch_size=16,
+                show_progress_bar=False,
+                normalize_embeddings=False,
+                convert_to_numpy=True,
+            ).astype(np.float32)
+            res = _l2_normalize(vecs)
+        import gc
+        gc.collect()
+        return res
+    except Exception as exc:
+        logger.warning("Sentence-transformer embedding failed (%s), using lightweight fallback", exc)
+        return _hash_embed(texts)
 
 
 def embed_query(query: str) -> np.ndarray:

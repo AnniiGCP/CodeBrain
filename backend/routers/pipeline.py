@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -42,6 +43,8 @@ def _set_status(repo_id: str, status: str, message: str, db: Session, error: str
         repo = db.query(Repo).filter(Repo.id == repo_id).first()
         if repo:
             repo.pipeline_status = status
+            repo.last_activity_summary = message
+            repo.last_activity_at = datetime.now(timezone.utc)
             if error is not None:
                 repo.pipeline_error = error
             db.commit()
@@ -252,7 +255,7 @@ def get_pipeline_status(
     repo = get_user_repo(repo_id, db, current_user)
 
     with _step_lock:
-        message = _step_messages.get(repo.id, _default_message(repo.pipeline_status))
+        message = _step_messages.get(repo.id, repo.last_activity_summary or _default_message(repo.pipeline_status))
 
     # Parse meta for summary counts if DONE
     meta_summary: dict | None = None
@@ -366,7 +369,9 @@ def get_repo_structure(
 def _default_message(status: str) -> str:
     return {
         "PENDING": "Waiting to start…",
-        "CLONING": "Cloning repository…",
+        "QUEUED": "Queued for processing…",
+        "CLONING": "Cloning repository from GitHub…",
+        "INGESTING": "Discovering and indexing files…",
         "PARSING": "Extracting code symbols…",
         "EMBEDDING": "Building semantic index…",
         "ANALYZING": "Analysing structure…",

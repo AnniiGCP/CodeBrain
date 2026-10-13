@@ -69,7 +69,18 @@ export async function apiFetch(input: string | URL | Request, init: RequestInit 
     headers,
     credentials: init.credentials ?? "include",
   };
-  const res = await fetch(input, options);
+  let res: Response;
+  try {
+    res = await fetch(input, options);
+  } catch (err: unknown) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    if (rawMsg.includes("Failed to fetch") || rawMsg.includes("NetworkError") || rawMsg.includes("Load failed")) {
+      throw new Error(
+        "Unable to connect to the CodeBrain backend. The server may be waking up from idle or network connectivity was interrupted. Please retry in a few seconds."
+      );
+    }
+    throw err;
+  }
   if (res.status === 401) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("codebrain_token");

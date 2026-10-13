@@ -121,8 +121,17 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
           clearInterval(pollingRef.current[repoId]);
           delete pollingRef.current[repoId];
 
-          // Refresh errors and docs when pipeline completes
+          // Refresh files, errors, and docs when pipeline completes
           if (s.pipeline_status === "DONE") {
+            fetchRepoFiles(repoId)
+              .then((data) => {
+                const nodes = Array.isArray(data.tree)
+                  ? data.tree
+                  : data.tree?.children || [data.tree];
+                setFileTree(nodes);
+              })
+              .catch(console.error);
+
             fetchErrorReports(repoId)
               .then((res) => setErrors(res.errors || []))
               .catch(() => {});

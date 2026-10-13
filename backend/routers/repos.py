@@ -371,11 +371,22 @@ def clone_github_repo(
     try:
         with httpx.Client(timeout=15) as client:
             check_resp = client.get(f"https://api.github.com/repos/{owner}/{repo_slug}", headers=gh_headers)
-        if check_resp.status_code in (401, 403, 404):
+        if check_resp.status_code in (401, 404):
             raise HTTPException(
                 status_code=400,
                 detail="You don't have access to this repository, or it doesn't exist.",
             )
+        elif check_resp.status_code == 403:
+            if user_token:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Your GitHub token does not have permission to access this repository.",
+                )
+            else:
+                logger.warning(
+                    "GitHub API pre-flight returned 403 (unauthenticated rate limit). Proceeding with direct git clone for %s/%s",
+                    owner, repo_slug,
+                )
     except HTTPException:
         raise
     except Exception as exc:
@@ -388,46 +399,103 @@ def clone_github_repo(
 
     repo_name = repo_slug
     repo = _create_repo(db, name=repo_name, source_type="github", user_id=current_user.id)
+    repo.pipeline_status = "CLONING"
+    repo.last_activity_summary = "Cloning repository from GitHub…"
+    db.commit()
+
     repo_dir = STORAGE_ROOT / repo.id
-    repo_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        git_repo = GitRepo.clone_from(clone_url, str(repo_dir), depth=1)
-        # Immediately sanitize .git/config remote URL so no plaintext token is stored on disk
-        try:
-            git_repo.remotes.origin.set_url(canonical_url)
-        except Exception:
-            pass
-        _ingest_files(db, repo, repo_dir)
-    except GitCommandError as exc:
-        shutil.rmtree(repo_dir, ignore_errors=True)
-        db.rollback()
-        sanitized_err = sanitize_sensitive_text(str(exc))
-        raise HTTPException(status_code=400, detail=f"Git clone failed: {sanitized_err}")
-    except Exception as exc:
-        shutil.rmtree(repo_dir, ignore_errors=True)
-        db.rollback()
-        sanitized_err = sanitize_sensitive_text(str(exc))
-        raise HTTPException(status_code=500, detail=sanitized_err)
+    # Spawn background task for asynchronous clone and ingestion pipeline
+    background_tasks.add_task(
+        run_clone_and_pipeline,
+        repo.id,
+        clone_url,
+        canonical_url,
+        str(repo_dir),
+    )
 
-    # Detect CI workflows if any exist
-    from automation.ci_setup import detect_ci_workflows
-    ci_info = detect_ci_workflows(repo.id, db)
-
-    # Kick off the auto-pipeline in background
-    background_tasks.add_task(run_pipeline, repo.id)
-
-    file_count = db.query(RepoFile).filter(RepoFile.repo_id == repo.id).count()
     return {
         "repo_id": repo.id,
         "name": repo.name,
         "source_type": repo.source_type,
-        "file_count": file_count,
-        "pipeline_status": "PARSING",
-        "detected_ci": ci_info["detected_ci"],
-        "detected_ci_files": ci_info["detected_ci_files"],
-        "needs_ci_setup": ci_info["needs_ci_setup"],
+        "file_count": 0,
+        "pipeline_status": "CLONING",
+        "detected_ci": False,
+        "detected_ci_files": [],
+        "needs_ci_setup": False,
     }
+
+
+def run_clone_and_pipeline(
+    repo_id: str,
+    clone_url: str,
+    canonical_url: str,
+    repo_dir_str: str,
+) -> None:
+    """Background worker for asynchronous repository cloning and ingestion pipeline."""
+    from database import SessionLocal
+    from models import Repo
+    from docgen.secret_redactor import sanitize_sensitive_text
+    from routers.pipeline import _set_status, run_pipeline
+
+    db = SessionLocal()
+    repo_dir = Path(repo_dir_str)
+    try:
+        repo = db.query(Repo).filter(Repo.id == repo_id).first()
+        if not repo:
+            logger.error("Repo %s not found for async clone pipeline", repo_id)
+            return
+
+        _set_status(repo_id, "CLONING", "Cloning repository from GitHub…", db)
+        logger.info("[PIPELINE] Starting background Git clone for %s (%s)", repo_id, repo.name)
+
+        repo_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            git_repo = GitRepo.clone_from(clone_url, str(repo_dir), depth=1)
+            try:
+                git_repo.remotes.origin.set_url(canonical_url)
+            except Exception:
+                pass
+        except GitCommandError as exc:
+            shutil.rmtree(repo_dir, ignore_errors=True)
+            sanitized_err = sanitize_sensitive_text(str(exc))
+            logger.error("Git clone failed for repo %s: %s", repo_id, sanitized_err)
+            _set_status(repo_id, "FAILED", f"Git clone failed: {sanitized_err}", db, error=sanitized_err)
+            return
+        except Exception as exc:
+            shutil.rmtree(repo_dir, ignore_errors=True)
+            sanitized_err = sanitize_sensitive_text(str(exc))
+            logger.error("Git clone unexpected error for repo %s: %s", repo_id, sanitized_err)
+            _set_status(repo_id, "FAILED", f"Git clone failed: {sanitized_err}", db, error=sanitized_err)
+            return
+
+        # Stage 2: Ingest files
+        _set_status(repo_id, "INGESTING", "Discovering and indexing files…", db)
+        logger.info("[PIPELINE] Ingesting files for repo %s", repo_id)
+        try:
+            _ingest_files(db, repo, repo_dir)
+        except Exception as exc:
+            sanitized_err = sanitize_sensitive_text(str(exc))
+            logger.error("File ingestion failed for repo %s: %s", repo_id, sanitized_err)
+            _set_status(repo_id, "FAILED", f"File ingestion failed: {sanitized_err}", db, error=sanitized_err)
+            return
+
+        # Detect CI workflows if any exist
+        try:
+            from automation.ci_setup import detect_ci_workflows
+            detect_ci_workflows(repo_id, db)
+        except Exception as exc:
+            logger.warning("CI detection warning for %s: %s", repo_id, exc)
+
+        # Run the full pipeline (EMBEDDING, ANALYZING, DETECTING_ERRORS, etc.)
+        run_pipeline(repo_id)
+
+    except Exception as exc:
+        sanitized_err = sanitize_sensitive_text(str(exc))
+        logger.exception("Unhandled async clone error for repo %s: %s", repo_id, sanitized_err)
+        _set_status(repo_id, "FAILED", f"Pipeline error: {sanitized_err}", db, error=sanitized_err)
+    finally:
+        db.close()
 
 
 # ──────────────────────────────────────────────

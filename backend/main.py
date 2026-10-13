@@ -56,18 +56,25 @@ allowed_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()] 
 frontend_url = os.getenv("FRONTEND_URL", "").strip()
 if frontend_url and frontend_url not in allowed_origins:
     allowed_origins.append(frontend_url)
-for local_origin in ("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"):
-    if local_origin not in allowed_origins:
-        allowed_origins.append(local_origin)
+for default_origin in (
+    "https://codebrain-dev.vercel.app",
+    "https://codebrain.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+):
+    if default_origin not in allowed_origins:
+        allowed_origins.append(default_origin)
 
 # Never allow wildcard origin with credentials
 clean_origins = [o for o in allowed_origins if o != "*"]
 if not clean_origins:
-    clean_origins = ["http://localhost:5173"]
+    clean_origins = ["https://codebrain-dev.vercel.app", "http://localhost:5173"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=clean_origins,
+    allow_origin_regex=r"^https://([a-zA-Z0-9_-]+\.)?vercel\.app$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],

@@ -29,10 +29,8 @@ export const LinearHeader: FC<LinearHeaderProps> = ({ user, onOpenLogin }) => {
             className="flex items-center gap-2.5 text-[#f3f4f6] hover:opacity-90 transition-opacity"
             aria-label="CodeBrain Homepage"
           >
-            {/* Minimalist Linear-inspired Logo Mark */}
-            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-purple-600 via-indigo-600 to-blue-500 flex items-center justify-center text-xs font-bold text-white shadow-sm ring-1 ring-white/10">
-              <span className="text-[11px] leading-none">🧠</span>
-            </div>
+            {/* Official CodeBrain Logo Mark */}
+            <img src="/logo-mark.png" alt="CodeBrain" className="w-6 h-6 rounded-md object-contain shadow-sm ring-1 ring-white/10" />
             <span className="font-semibold text-sm tracking-tight text-[#f3f4f6]">
               CodeBrain
             </span>

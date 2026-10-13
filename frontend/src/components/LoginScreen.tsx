@@ -1,13 +1,16 @@
 import { useState } from "react";
-import { API_BASE, devLogin, registerUser, passwordLogin } from "../api";
+import { API_BASE, registerUser, passwordLogin } from "../api";
 import type { User } from "../types";
-import { CheckCircle2, Eye, EyeOff, Lock, Mail, User as UserIcon, ArrowRight, Shield } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Lock, Mail, User as UserIcon, ArrowRight } from "lucide-react";
 
 interface LoginScreenProps {
+  onLoginSuccess?: (user: User) => void;
   onDevLoginSuccess?: (user: User) => void;
 }
 
-export default function LoginScreen({ onDevLoginSuccess }: LoginScreenProps) {
+export default function LoginScreen({ onLoginSuccess, onDevLoginSuccess }: LoginScreenProps) {
+  const handleSuccess = onLoginSuccess || onDevLoginSuccess;
+
   // Method / Tab state: "signin" | "signup"
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
 
@@ -22,12 +25,6 @@ export default function LoginScreen({ onDevLoginSuccess }: LoginScreenProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  // Dev bypass state
-  const [showDevModal, setShowDevModal] = useState(false);
-  const [devUsername, setDevUsername] = useState("Developer");
-  const [devLoading, setDevLoading] = useState(false);
-  const [devError, setDevError] = useState<string | null>(null);
 
   const handleGitHubLogin = () => {
     window.location.href = `${API_BASE}/auth/github/login`;
@@ -57,8 +54,8 @@ export default function LoginScreen({ onDevLoginSuccess }: LoginScreenProps) {
         const user = await registerUser(email.trim(), username.trim(), password);
         setSuccessMsg("Account created! Redirecting to workspace...");
         setTimeout(() => {
-          if (onDevLoginSuccess) {
-            onDevLoginSuccess(user);
+          if (handleSuccess) {
+            handleSuccess(user);
           } else {
             window.location.href = "/dashboard";
           }
@@ -79,8 +76,8 @@ export default function LoginScreen({ onDevLoginSuccess }: LoginScreenProps) {
       setLoading(true);
       try {
         const user = await passwordLogin(identifier, password);
-        if (onDevLoginSuccess) {
-          onDevLoginSuccess(user);
+        if (handleSuccess) {
+          handleSuccess(user);
         } else {
           window.location.href = "/dashboard";
         }
@@ -92,34 +89,17 @@ export default function LoginScreen({ onDevLoginSuccess }: LoginScreenProps) {
     }
   };
 
-  const handleDevSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!devUsername.trim()) return;
-    setDevLoading(true);
-    setDevError(null);
-    try {
-      const user = await devLogin(devUsername.trim());
-      if (onDevLoginSuccess) {
-        onDevLoginSuccess(user);
-      } else {
-        window.location.href = "/dashboard";
-      }
-    } catch (err: unknown) {
-      setDevError(err instanceof Error ? err.message : "Dev login failed");
-    } finally {
-      setDevLoading(false);
-    }
-  };
-
   return (
     <div className="w-full flex flex-col items-center justify-center p-4 text-[#f3f4f6] font-sans selection:bg-purple-600 selection:text-white">
       {/* Compact, Centered Authentication Card (Content-driven Height) */}
       <div className="w-full max-w-md bg-[#1b1b1d] border border-[#2a2b2e] rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
         {/* App Logo & Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 mx-auto rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-xl shadow-lg">
-            🧠
-          </div>
+          <img
+            src="/logo-mark.png"
+            alt="CodeBrain"
+            className="w-12 h-12 mx-auto rounded-xl object-contain shadow-lg ring-1 ring-purple-500/20"
+          />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#f3f4f6]">
             Welcome to CodeBrain
           </h1>
@@ -296,53 +276,7 @@ export default function LoginScreen({ onDevLoginSuccess }: LoginScreenProps) {
           </form>
         </div>
 
-        {/* Developer Bypass Login (Retained for Development Testing) */}
-        <div className="pt-2 border-t border-[#2a2b2e] text-center">
-          {!showDevModal ? (
-            <button
-              id="dev-bypass-link"
-              type="button"
-              onClick={() => setShowDevModal(true)}
-              className="text-[11px] text-[#71717a] hover:text-purple-400 transition-colors underline cursor-pointer"
-            >
-              Developer bypass login
-            </button>
-          ) : (
-            <form onSubmit={handleDevSubmit} className="space-y-2 text-left bg-[#202124]/50 p-3 rounded-xl border border-[#2a2b2e]">
-              <div className="flex items-center justify-between text-[11px] font-mono text-purple-300">
-                <span className="flex items-center gap-1">
-                  <Shield size={11} /> Developer Bypass
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowDevModal(false)}
-                  className="text-[#71717a] hover:text-white text-xs"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  id="dev-bypass-username-input"
-                  type="text"
-                  value={devUsername}
-                  onChange={(e) => setDevUsername(e.target.value)}
-                  className="flex-1 bg-[#161718] border border-[#2a2b2e] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
-                  placeholder="Developer"
-                />
-                <button
-                  id="dev-bypass-submit-btn"
-                  type="submit"
-                  disabled={devLoading}
-                  className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow"
-                >
-                  {devLoading ? "…" : "Sign In"}
-                </button>
-              </div>
-              {devError && <p className="text-red-400 text-xs mt-1">{devError}</p>}
-            </form>
-          )}
-        </div>
+
 
         {/* Clean Neutral Footer (BCG786 removed) */}
         <p className="text-center text-[10px] text-[#71717a]">

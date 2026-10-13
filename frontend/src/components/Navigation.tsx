@@ -32,9 +32,7 @@ export default function Navigation({
             to="/dashboard"
             className="flex items-center gap-2 text-white font-bold text-sm tracking-tight hover:text-purple-300 transition-colors"
           >
-            <div className="bg-gradient-to-tr from-purple-600 to-indigo-500 p-1 rounded-md shadow-md shadow-purple-950/40">
-              <Code size={14} className="text-white" />
-            </div>
+            <img src="/logo-mark.png" alt="CodeBrain" className="w-6 h-6 rounded-md object-contain shadow-md" />
             <span className="font-semibold text-xs tracking-wider uppercase text-gray-200">
               Code<span className="text-purple-400 font-bold">Brain</span>
             </span>

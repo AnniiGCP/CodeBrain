@@ -74,7 +74,7 @@ jobs:
 
       - name: Run frontend unit & rendering tests
         working-directory: frontend
-        run: npm test -- --run
+        run: npm test
 
       - name: Run TypeScript type-check and Vite production build
         working-directory: frontend

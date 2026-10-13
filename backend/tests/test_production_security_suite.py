@@ -12,6 +12,7 @@ Comprehensive automated security test suite validating:
 """
 import io
 import os
+import uuid
 import zipfile
 import pytest
 from fastapi.testclient import TestClient
@@ -174,8 +175,8 @@ def test_zip_upload_rejection_of_symlink_and_traversal(monkeypatch):
     """Verify ZIP extraction rejects Zip Slip directory traversal and symlinks."""
     client = TestClient(app)
 
-    # Log in test user
-    dev_res = client.post("/auth/dev-login", json={"github_id": "sec_test_user", "github_username": "sec_user"})
+    uid = uuid.uuid4().hex[:8]
+    dev_res = client.post("/auth/dev-login", json={"github_id": f"sec_test_user_{uid}", "github_username": f"sec_user_{uid}"})
     assert dev_res.status_code == 200
     token = dev_res.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -218,7 +219,8 @@ def test_file_content_path_traversal_blocked():
     """Verify GET /repos/{repo_id}/file-content prevents directory traversal."""
     client = TestClient(app)
 
-    dev_res = client.post("/auth/dev-login", json={"github_id": "sec_test_user2", "github_username": "sec_user2"})
+    uid = uuid.uuid4().hex[:8]
+    dev_res = client.post("/auth/dev-login", json={"github_id": f"sec_test_user2_{uid}", "github_username": f"sec_user2_{uid}"})
     assert dev_res.status_code == 200
     headers = {"Authorization": f"Bearer {dev_res.json()['token']}"}
 

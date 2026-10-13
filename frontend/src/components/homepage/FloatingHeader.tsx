@@ -144,9 +144,11 @@ export const FloatingHeader: FC<FloatingHeaderProps> = ({
             className="flex items-center gap-2 group shrink-0 pl-1"
             aria-label="CodeBrain Homepage"
           >
-            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-xs shadow-sm group-hover:scale-105 transition-transform duration-300">
-              🧠
-            </div>
+            <img
+              src="/logo-mark.png"
+              alt="CodeBrain"
+              className="w-6 h-6 rounded-md object-contain shadow-sm group-hover:scale-105 transition-transform duration-300"
+            />
             <span className="font-semibold text-sm tracking-tight text-[#f3f4f6] group-hover:text-purple-300 transition-colors">
               CodeBrain
             </span>

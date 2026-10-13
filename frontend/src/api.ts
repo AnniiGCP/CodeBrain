@@ -45,14 +45,7 @@ const configuredApiUrl = (
   ""
 ).trim();
 
-export const API_BASE = configuredApiUrl || (import.meta.env.PROD ? "" : "http://localhost:8000");
-
-if (import.meta.env.PROD && !configuredApiUrl) {
-  console.warn(
-    "[CodeBrain Production] Neither VITE_API_URL nor VITE_API_BASE_URL is defined in environment variables. " +
-    "API requests will target the current host origin."
-  );
-}
+export const API_BASE = configuredApiUrl || (import.meta.env.PROD ? "https://codebrain-backend.onrender.com" : "http://localhost:8000");
 
 let onUnauthorizedCallback: (() => void) | null = null;
 
@@ -65,12 +58,22 @@ export function setOnUnauthorizedCallback(cb: () => void) {
  * and globally catches 401 Unauthorized responses.
  */
 export async function apiFetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers || {});
+  const token = typeof window !== "undefined" ? localStorage.getItem("codebrain_token") : null;
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   const options: RequestInit = {
     ...init,
+    headers,
     credentials: init.credentials ?? "include",
   };
   const res = await fetch(input, options);
   if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("codebrain_token");
+    }
     if (onUnauthorizedCallback) {
       onUnauthorizedCallback();
     }
@@ -90,6 +93,9 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 export async function logout(): Promise<void> {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("codebrain_token");
+  }
   await apiFetch(`${API_BASE}/logout`, { method: "POST" });
 }
 
@@ -126,6 +132,9 @@ export async function devLogin(username = "dev_user"): Promise<User> {
     throw new Error(err.detail ?? "Dev login failed");
   }
   const data = await res.json();
+  if (data.token && typeof window !== "undefined") {
+    localStorage.setItem("codebrain_token", data.token);
+  }
   return data.user;
 }
 
@@ -140,6 +149,9 @@ export async function registerUser(email: string, username: string, password: st
     throw new Error(err.detail ?? "Registration failed");
   }
   const data = await res.json();
+  if (data.token && typeof window !== "undefined") {
+    localStorage.setItem("codebrain_token", data.token);
+  }
   return data.user;
 }
 
@@ -154,6 +166,9 @@ export async function passwordLogin(identifier: string, password: string): Promi
     throw new Error(err.detail ?? "Login failed");
   }
   const data = await res.json();
+  if (data.token && typeof window !== "undefined") {
+    localStorage.setItem("codebrain_token", data.token);
+  }
   return data.user;
 }
 

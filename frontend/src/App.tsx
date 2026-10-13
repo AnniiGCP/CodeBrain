@@ -29,6 +29,15 @@ export default function App() {
       setUser(null);
     });
 
+    // Capture OAuth session token from URL hash if returning from GitHub login
+    if (typeof window !== "undefined" && window.location.hash) {
+      const match = window.location.hash.match(/(?:#|&)session_token=([^&]+)/);
+      if (match && match[1]) {
+        localStorage.setItem("codebrain_token", match[1]);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+
     getCurrentUser()
       .then((currentUser) => setUser(currentUser))
       .catch(() => setUser(null))

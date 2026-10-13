@@ -194,13 +194,14 @@ def register_user(
     db.refresh(new_user)
 
     token = create_session_token(new_user.id)
+    cookie_secure = _is_cookie_secure(request)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
         max_age=86400 * 30,
-        samesite="lax",
-        secure=_is_cookie_secure(request),
+        samesite="none" if cookie_secure else "lax",
+        secure=cookie_secure,
         path="/",
     )
 
@@ -261,13 +262,14 @@ def password_login(
     record_login_success(request, clean_identifier)
 
     token = create_session_token(user.id)
+    cookie_secure = _is_cookie_secure(request)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
         max_age=86400 * 30,
-        samesite="lax",
-        secure=_is_cookie_secure(request),
+        samesite="none" if cookie_secure else "lax",
+        secure=cookie_secure,
         path="/",
     )
 
@@ -512,15 +514,17 @@ def github_callback(
     # 6. Establish session
     session_token = create_session_token(user.id)
 
-    # 7. Redirect to frontend with httpOnly session cookie
-    redirect_resp = RedirectResponse(url=frontend_url, status_code=status.HTTP_302_FOUND)
+    # 7. Redirect to frontend with httpOnly session cookie and hash token for cross-domain auth
+    cookie_secure = _is_cookie_secure()
+    target_url = f"{frontend_url.rstrip('/')}/#session_token={session_token}"
+    redirect_resp = RedirectResponse(url=target_url, status_code=status.HTTP_302_FOUND)
     redirect_resp.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_token,
         httponly=True,
         max_age=86400 * 30,
-        samesite="lax",
-        secure=_is_cookie_secure(),
+        samesite="none" if cookie_secure else "lax",
+        secure=cookie_secure,
         path="/",
     )
     return redirect_resp

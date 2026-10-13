@@ -79,9 +79,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+import threading
 
-def init_db():
-    """Create all tables and perform lightweight schema migrations across SQLite and PostgreSQL."""
+_db_initialized = False
+_db_init_lock = threading.Lock()
+
+
+def _run_init_db():
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
         try:
@@ -236,6 +240,18 @@ def init_db():
                 conn.commit()
         except Exception as e:
             logger.warning("Database init_db encountered non-fatal migration warning: %s", e)
+
+
+def init_db(force: bool = False):
+    """Create all tables and perform lightweight schema migrations across SQLite and PostgreSQL once per process."""
+    global _db_initialized
+    if _db_initialized and not force:
+        return
+    with _db_init_lock:
+        if _db_initialized and not force:
+            return
+        _run_init_db()
+        _db_initialized = True
 
 
 def get_db():

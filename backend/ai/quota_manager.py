@@ -113,10 +113,9 @@ def _get_persisted_usage(target_date: Optional[str] = None) -> Dict[str, Any]:
     """
     d = target_date or get_today_utc()
     try:
-        from database import SessionLocal, init_db
+        from database import SessionLocal
         from models import ApinexDailyUsage
 
-        init_db()
         with SessionLocal() as db:
             row = db.query(ApinexDailyUsage).filter(ApinexDailyUsage.date == d).first()
             if row:
@@ -240,10 +239,9 @@ def record_usage(
     now_utc = datetime.now(timezone.utc)
 
     try:
-        from database import SessionLocal, init_db
+        from database import SessionLocal
         from models import ApinexDailyUsage
 
-        init_db()
         with SessionLocal() as db:
             # Use atomic SQL upsert to guarantee concurrency safety
             upsert_sql = text("""
@@ -288,10 +286,9 @@ def reset_quota_for_date(target_date: Optional[str] = None) -> None:
     """Resets the usage counter for a date. Used primarily for deterministic test fixtures."""
     d = target_date or get_today_utc()
     try:
-        from database import SessionLocal, init_db
+        from database import SessionLocal
         from models import ApinexDailyUsage
 
-        init_db()
         with SessionLocal() as db:
             db.query(ApinexDailyUsage).filter(ApinexDailyUsage.date == d).delete()
             db.commit()

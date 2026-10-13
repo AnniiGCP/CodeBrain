@@ -195,16 +195,35 @@ def get_client_ip(request: Request) -> str:
     """
     Extract client IP address safely.
     Only trusts forwarding headers (X-Forwarded-For) if request arrives from a configured trusted proxy.
+    Supports exact IP matches and CIDR notation (e.g. 10.0.0.0/8).
     Otherwise returns direct peer host to prevent header spoofing.
     """
+    import ipaddress
     direct_ip = request.client.host if request.client else "127.0.0.1"
     trusted_proxies_env = os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1").strip()
-    trusted_proxies = {p.strip() for p in trusted_proxies_env.split(",") if p.strip()}
 
-    if direct_ip in trusted_proxies or "*" in trusted_proxies:
+    is_trusted = False
+    for token in trusted_proxies_env.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if token == "*":
+            is_trusted = True
+            break
+        try:
+            if "/" in token:
+                if ipaddress.ip_address(direct_ip) in ipaddress.ip_network(token, strict=False):
+                    is_trusted = True
+                    break
+            elif direct_ip == token:
+                is_trusted = True
+                break
+        except ValueError:
+            continue
+
+    if is_trusted:
         xfwd = request.headers.get("x-forwarded-for")
         if xfwd:
-            # First IP in X-Forwarded-For is client origin
             parts = [p.strip() for p in xfwd.split(",") if p.strip()]
             if parts:
                 return parts[0]

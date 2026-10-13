@@ -46,16 +46,26 @@ if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     # Production PostgreSQL / Supabase connection pooling
-    pool_size = int(os.environ.get("DB_POOL_SIZE", "5"))
-    max_overflow = int(os.environ.get("DB_MAX_OVERFLOW", "10"))
-    pool_recycle = int(os.environ.get("DB_POOL_RECYCLE", "300"))
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,
-        pool_size=pool_size,
-        max_overflow=max_overflow,
-        pool_recycle=pool_recycle,
-    )
+    is_supabase_pooler = ":6543" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL
+    if is_supabase_pooler or os.environ.get("DB_USE_NULLPOOL", "").lower() in ("true", "1", "yes"):
+        from sqlalchemy.pool import NullPool
+        engine = create_engine(
+            DATABASE_URL,
+            poolclass=NullPool,
+            connect_args={"connect_timeout": 10},
+        )
+    else:
+        pool_size = int(os.environ.get("DB_POOL_SIZE", "10"))
+        max_overflow = int(os.environ.get("DB_MAX_OVERFLOW", "20"))
+        pool_recycle = int(os.environ.get("DB_POOL_RECYCLE", "300"))
+        engine = create_engine(
+            DATABASE_URL,
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_recycle=pool_recycle,
+            connect_args={"connect_timeout": 10},
+        )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

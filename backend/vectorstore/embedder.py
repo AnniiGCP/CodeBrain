@@ -19,10 +19,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_PRIMARY_MODEL   = "BAAI/bge-small-en-v1.5"
+_PRIMARY_MODEL   = "sentence-transformers/all-MiniLM-L6-v2"
 _FALLBACK_MODELS = [
-    "sentence-transformers/all-MiniLM-L6-v2",
-    "BAAI/bge-code-v1",
+    "BAAI/bge-small-en-v1.5",
 ]
 
 
@@ -35,6 +34,12 @@ def _get_dim(model) -> int:
 @lru_cache(maxsize=1)
 def get_model():
     """Return a cached SentenceTransformer. Tries models in order."""
+    try:
+        import torch
+        torch.set_num_threads(1)
+    except Exception:
+        pass
+
     from sentence_transformers import SentenceTransformer  # lazy import
 
     for model_name in [_PRIMARY_MODEL, *_FALLBACK_MODELS]:

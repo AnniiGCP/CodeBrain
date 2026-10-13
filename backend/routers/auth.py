@@ -608,7 +608,7 @@ def list_github_repositories(
     try:
         with httpx.Client(timeout=20) as client:
             resp = client.get(
-                "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
+                "https://api.github.com/user/repos?per_page=50&sort=updated&affiliation=owner,collaborator,organization_member",
                 headers=headers,
             )
     except Exception as exc:

@@ -252,6 +252,7 @@ def test_provider_error_mappings():
 # ── 2. PERSISTENT DAILY QUOTA COUNTER TESTS ────────────────────────────────────
 
 def test_quota_initial_state():
+    reset_quota_for_date()
     usage = get_usage()
     assert usage["daily_limit"] == 315000
     assert usage["total_tokens"] == 0

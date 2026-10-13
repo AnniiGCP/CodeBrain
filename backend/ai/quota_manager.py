@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
@@ -105,13 +106,21 @@ def release_reservation(estimated_tokens: int = 500, target_date: Optional[str] 
         _IN_FLIGHT_RESERVATIONS[d] = max(0, current_in_flight - estimated_tokens)
 
 
+_persisted_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_CACHE_TTL = 5.0  # seconds
+
+
 def _get_persisted_usage(target_date: Optional[str] = None) -> Dict[str, Any]:
     """
     Helper to query persisted usage from the database for the given date (default today UTC).
-    Each calendar day has its own persistent row in ApinexDailyUsage. Historical records
-    from previous days remain in the database without counting toward the current daily budget.
+    Caches results in memory for 5 seconds to prevent database contention under rapid polling.
     """
     d = target_date or get_today_utc()
+    now = time.time()
+    cached = _persisted_cache.get(d)
+    if cached and (now - cached[0] < _CACHE_TTL):
+        return cached[1]
+
     try:
         from database import SessionLocal
         from models import ApinexDailyUsage
@@ -119,7 +128,7 @@ def _get_persisted_usage(target_date: Optional[str] = None) -> Dict[str, Any]:
         with SessionLocal() as db:
             row = db.query(ApinexDailyUsage).filter(ApinexDailyUsage.date == d).first()
             if row:
-                return {
+                res = {
                     "date": row.date,
                     "prompt_tokens": row.prompt_tokens or 0,
                     "completion_tokens": row.completion_tokens or 0,
@@ -128,16 +137,29 @@ def _get_persisted_usage(target_date: Optional[str] = None) -> Dict[str, Any]:
                     "is_estimated": bool(row.is_estimated),
                     "updated_at": row.updated_at.isoformat() if row.updated_at else None,
                 }
-            return {
-                "date": d,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-                "request_count": 0,
-                "is_estimated": False,
-                "updated_at": None,
-            }
+            else:
+                res = {
+                    "date": d,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "request_count": 0,
+                    "is_estimated": False,
+                    "updated_at": None,
+                }
+            _persisted_cache[d] = (now, res)
+            return res
     except Exception as exc:
+        logger.warning("Could not query APInex persisted usage from DB: %s", exc)
+        return {
+            "date": d,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "request_count": 0,
+            "is_estimated": False,
+            "updated_at": None,
+        }
         logger.error("Error reading Apinex daily usage for %s: %s", d, exc)
 
     return {
@@ -279,6 +301,7 @@ def record_usage(
     except Exception as exc:
         logger.error("Failed recording APInex usage to database: %s", exc, exc_info=True)
 
+    _persisted_cache.pop(d, None)
     return get_usage(target_date)
 
 
@@ -295,5 +318,6 @@ def reset_quota_for_date(target_date: Optional[str] = None) -> None:
     except Exception as exc:
         logger.error("Failed resetting quota for date %s: %s", d, exc)
 
+    _persisted_cache.pop(d, None)
     with _RESERVATION_LOCK:
         _IN_FLIGHT_RESERVATIONS.pop(d, None)

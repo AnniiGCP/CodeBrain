@@ -69,106 +69,105 @@ def init_db():
         try:
             if engine.dialect.name == "sqlite":
                 res = conn.exec_driver_sql("PRAGMA table_info(repos)")
-            cols = [row[1] for row in res.fetchall()]
-            if cols:
-                if "user_id" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN user_id VARCHAR REFERENCES users(id)")
-                if "detected_ci" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN detected_ci BOOLEAN DEFAULT 0")
-                if "detected_ci_files" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN detected_ci_files TEXT")
-                if "needs_ci_setup" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN needs_ci_setup BOOLEAN DEFAULT 0")
-                if "last_activity_at" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_activity_at DATETIME")
-                if "last_activity_summary" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_activity_summary TEXT")
-                if "last_commit_sha" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_sha VARCHAR")
-                if "last_commit_message" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_message TEXT")
-                if "last_commit_branch" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_branch VARCHAR")
-                if "last_commit_time" not in cols:
-                    conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_time DATETIME")
-                conn.commit()
+                cols = [row[1] for row in res.fetchall()]
+                if cols:
+                    if "user_id" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN user_id VARCHAR REFERENCES users(id)")
+                    if "detected_ci" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN detected_ci BOOLEAN DEFAULT 0")
+                    if "detected_ci_files" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN detected_ci_files TEXT")
+                    if "needs_ci_setup" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN needs_ci_setup BOOLEAN DEFAULT 0")
+                    if "last_activity_at" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_activity_at DATETIME")
+                    if "last_activity_summary" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_activity_summary TEXT")
+                    if "last_commit_sha" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_sha VARCHAR")
+                    if "last_commit_message" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_message TEXT")
+                    if "last_commit_branch" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_branch VARCHAR")
+                    if "last_commit_time" not in cols:
+                        conn.exec_driver_sql("ALTER TABLE repos ADD COLUMN last_commit_time DATETIME")
+                    conn.commit()
 
-            res_users = conn.exec_driver_sql("PRAGMA table_info(users)")
-            user_cols = [row[1] for row in res_users.fetchall()]
-            if user_cols:
-                if "user_email" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN user_email VARCHAR")
-                if "password_hash" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN password_hash VARCHAR")
-                if "encrypted_github_token" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_github_token TEXT")
-                if "encrypted_groq_api_key" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_groq_api_key TEXT")
-                if "encrypted_nvidia_api_key" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_nvidia_api_key TEXT")
-                if "encrypted_openrouter_api_key" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_openrouter_api_key TEXT")
-                if "encrypted_anthropic_api_key" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_anthropic_api_key TEXT")
-                if "custom_ai_base_url" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN custom_ai_base_url VARCHAR")
-                if "custom_ai_model" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN custom_ai_model VARCHAR")
-                if "encrypted_custom_ai_api_key" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_custom_ai_api_key TEXT")
-                if "anthropic_compatible_base_url" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN anthropic_compatible_base_url VARCHAR")
-                if "anthropic_compatible_model" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN anthropic_compatible_model VARCHAR")
-                if "encrypted_anthropic_compatible_api_key" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_anthropic_compatible_api_key TEXT")
-                if "custom_ai_display_name" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN custom_ai_display_name VARCHAR")
-                if "anthropic_compatible_display_name" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN anthropic_compatible_display_name VARCHAR")
-                if "preferred_ai_provider" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN preferred_ai_provider VARCHAR DEFAULT 'nvidia'")
-                if "preferred_ai_model" not in user_cols:
-                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN preferred_ai_model VARCHAR")
-                conn.commit()
+                res_users = conn.exec_driver_sql("PRAGMA table_info(users)")
+                user_cols = [row[1] for row in res_users.fetchall()]
+                if user_cols:
+                    if "user_email" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN user_email VARCHAR")
+                    if "password_hash" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN password_hash VARCHAR")
+                    if "encrypted_github_token" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_github_token TEXT")
+                    if "encrypted_groq_api_key" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_groq_api_key TEXT")
+                    if "encrypted_nvidia_api_key" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_nvidia_api_key TEXT")
+                    if "encrypted_openrouter_api_key" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_openrouter_api_key TEXT")
+                    if "encrypted_anthropic_api_key" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_anthropic_api_key TEXT")
+                    if "custom_ai_base_url" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN custom_ai_base_url VARCHAR")
+                    if "custom_ai_model" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN custom_ai_model VARCHAR")
+                    if "encrypted_custom_ai_api_key" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_custom_ai_api_key TEXT")
+                    if "anthropic_compatible_base_url" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN anthropic_compatible_base_url VARCHAR")
+                    if "anthropic_compatible_model" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN anthropic_compatible_model VARCHAR")
+                    if "encrypted_anthropic_compatible_api_key" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN encrypted_anthropic_compatible_api_key TEXT")
+                    if "custom_ai_display_name" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN custom_ai_display_name VARCHAR")
+                    if "anthropic_compatible_display_name" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN anthropic_compatible_display_name VARCHAR")
+                    if "preferred_ai_provider" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN preferred_ai_provider VARCHAR DEFAULT 'nvidia'")
+                    if "preferred_ai_model" not in user_cols:
+                        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN preferred_ai_model VARCHAR")
+                    conn.commit()
 
+                res_err = conn.exec_driver_sql("PRAGMA table_info(error_reports)")
+                err_cols = [row[1] for row in res_err.fetchall()]
+                if err_cols:
+                    if "source" not in err_cols:
+                        conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN source VARCHAR DEFAULT 'static_analysis'")
+                    if "column" not in err_cols:
+                        conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN column INTEGER")
+                    if "stack_trace" not in err_cols:
+                        conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN stack_trace TEXT")
+                    if "fix_provider" not in err_cols:
+                        conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN fix_provider VARCHAR")
+                    if "fix_attribution" not in err_cols:
+                        conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN fix_attribution VARCHAR")
+                    if "fix_attempts" not in err_cols:
+                        conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN fix_attempts TEXT")
+                    conn.commit()
 
-            res_err = conn.exec_driver_sql("PRAGMA table_info(error_reports)")
-            err_cols = [row[1] for row in res_err.fetchall()]
-            if err_cols:
-                if "source" not in err_cols:
-                    conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN source VARCHAR DEFAULT 'static_analysis'")
-                if "column" not in err_cols:
-                    conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN column INTEGER")
-                if "stack_trace" not in err_cols:
-                    conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN stack_trace TEXT")
-                if "fix_provider" not in err_cols:
-                    conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN fix_provider VARCHAR")
-                if "fix_attribution" not in err_cols:
-                    conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN fix_attribution VARCHAR")
-                if "fix_attempts" not in err_cols:
-                    conn.exec_driver_sql("ALTER TABLE error_reports ADD COLUMN fix_attempts TEXT")
-                conn.commit()
+                res_readmes = conn.exec_driver_sql("PRAGMA table_info(repo_readmes)")
+                rm_cols = [row[1] for row in res_readmes.fetchall()]
+                if rm_cols:
+                    if "source_fingerprint" not in rm_cols:
+                        conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN source_fingerprint VARCHAR")
+                    if "generator_model" not in rm_cols:
+                        conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN generator_model VARCHAR")
+                    if "status" not in rm_cols:
+                        conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN status VARCHAR DEFAULT 'READY'")
+                    if "error" not in rm_cols:
+                        conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN error TEXT")
+                    conn.commit()
 
-            res_readmes = conn.exec_driver_sql("PRAGMA table_info(repo_readmes)")
-            rm_cols = [row[1] for row in res_readmes.fetchall()]
-            if rm_cols:
-                if "source_fingerprint" not in rm_cols:
-                    conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN source_fingerprint VARCHAR")
-                if "generator_model" not in rm_cols:
-                    conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN generator_model VARCHAR")
-                if "status" not in rm_cols:
-                    conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN status VARCHAR DEFAULT 'READY'")
-                if "error" not in rm_cols:
-                    conn.exec_driver_sql("ALTER TABLE repo_readmes ADD COLUMN error TEXT")
-                conn.commit()
-
-            res_ciconf = conn.exec_driver_sql("PRAGMA table_info(repo_ci_configs)")
-            ciconf_cols = [row[1] for row in res_ciconf.fetchall()]
-            if ciconf_cols:
-                if "proposed_workflow_content" not in ciconf_cols:
-                    conn.exec_driver_sql("ALTER TABLE repo_ci_configs ADD COLUMN proposed_workflow_content TEXT")
-                conn.commit()
+                res_ciconf = conn.exec_driver_sql("PRAGMA table_info(repo_ci_configs)")
+                ciconf_cols = [row[1] for row in res_ciconf.fetchall()]
+                if ciconf_cols:
+                    if "proposed_workflow_content" not in ciconf_cols:
+                        conn.exec_driver_sql("ALTER TABLE repo_ci_configs ADD COLUMN proposed_workflow_content TEXT")
+                    conn.commit()
             elif engine.dialect.name == "postgresql":
                 pg_migrations = [
                     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id)",

@@ -7,14 +7,40 @@ logger = logging.getLogger("codebrain.database")
 
 RAW_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./app.db").strip()
 
-# SQLAlchemy 1.4+ / 2.0 driver compatibility:
-# Map postgres:// or generic postgresql:// to explicit postgresql+psycopg2:// driver
-if RAW_DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = RAW_DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
-elif RAW_DATABASE_URL.startswith("postgresql://") and not RAW_DATABASE_URL.startswith("postgresql+"):
-    DATABASE_URL = RAW_DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
-else:
-    DATABASE_URL = RAW_DATABASE_URL
+def normalize_database_url(raw_url: str) -> str:
+    """
+    Normalizes PostgreSQL database URLs for SQLAlchemy 2.0+ and psycopg2.
+    Safely encodes special characters (like '@' or ':') in database passwords
+    so that URI parsing correctly identifies the Supabase host name.
+    """
+    url = raw_url.strip()
+    if not url or url.startswith("sqlite"):
+        return url
+
+    prefix, sep, rest = url.partition("://")
+    if not sep:
+        return url
+
+    # Ensure explicit driver specification (psycopg2) for PostgreSQL
+    if prefix in ("postgres", "postgresql"):
+        prefix = "postgresql+psycopg2"
+
+    # Handle special characters in password (everything before last '@' is credentials)
+    if "@" in rest:
+        userinfo, _, host_and_path = rest.rpartition("@")
+        if ":" in userinfo:
+            user, _, password = userinfo.partition(":")
+            import urllib.parse
+            unquoted_pw = urllib.parse.unquote_plus(password)
+            quoted_pw = urllib.parse.quote_plus(unquoted_pw)
+            rest = f"{user}:{quoted_pw}@{host_and_path}"
+        else:
+            rest = f"{userinfo}@{host_and_path}"
+
+    return f"{prefix}://{rest}"
+
+
+DATABASE_URL = normalize_database_url(RAW_DATABASE_URL)
 
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})

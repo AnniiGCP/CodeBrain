@@ -37,7 +37,7 @@ jobs:
           DATABASE_URL: sqlite:///./deploy_test.db
           SESSION_SECRET: test-session-secret-for-deployment-gate-32-bytes
           ALLOW_DEV_LOGIN: "false"
-        run: python -m pytest
+        run: python -m pytest -v --tb=short
 
       - name: Set up Node.js 20.x
         uses: actions/setup-node@v4

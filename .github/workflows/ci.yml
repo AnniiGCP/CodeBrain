@@ -41,7 +41,7 @@ jobs:
           SESSION_SECRET: test-session-secret-for-ci-runs-32-chars-minimum
           ALLOW_DEV_LOGIN: "false"
         run: |
-          python -m pytest --junitxml=pytest-results.xml
+          python -m pytest -v --tb=short --junitxml=pytest-results.xml
 
       - name: Upload test results
         if: always()

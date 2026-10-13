@@ -193,7 +193,13 @@ def register_user(
     db.commit()
     db.refresh(new_user)
 
-    token = create_session_token(new_user.id)
+    try:
+        token = create_session_token(new_user.id)
+    except RuntimeError as r_err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server configuration error: {r_err}. Please set a custom SESSION_SECRET in the Render dashboard environment variables.",
+        )
     cookie_secure = _is_cookie_secure(request)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -261,7 +267,13 @@ def password_login(
     # Successful authentication: clear failure count
     record_login_success(request, clean_identifier)
 
-    token = create_session_token(user.id)
+    try:
+        token = create_session_token(user.id)
+    except RuntimeError as r_err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server configuration error: {r_err}. Please set a custom SESSION_SECRET in the Render dashboard environment variables.",
+        )
     cookie_secure = _is_cookie_secure(request)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -394,7 +406,13 @@ def github_login(
         "GITHUB_OAUTH_REDIRECT_URI", "http://localhost:8000/auth/github/callback"
     )
 
-    oauth_state = state or create_oauth_state()
+    try:
+        oauth_state = state or create_oauth_state()
+    except RuntimeError as r_err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server configuration error: {r_err}. Please set a custom SESSION_SECRET in the Render dashboard environment variables.",
+        )
 
     params = {
         "client_id": client_id,
@@ -512,7 +530,13 @@ def github_callback(
     db.refresh(user)
 
     # 6. Establish session
-    session_token = create_session_token(user.id)
+    try:
+        session_token = create_session_token(user.id)
+    except RuntimeError as r_err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server configuration error: {r_err}. Please set a custom SESSION_SECRET in the Render dashboard environment variables.",
+        )
 
     # 7. Redirect to frontend with httpOnly session cookie and hash token for cross-domain auth
     cookie_secure = _is_cookie_secure()

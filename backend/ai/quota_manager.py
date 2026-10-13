@@ -277,7 +277,7 @@ def record_usage(
                     completion_tokens = apinex_daily_usage.completion_tokens + :comp,
                     total_tokens = apinex_daily_usage.total_tokens + :tot,
                     request_count = apinex_daily_usage.request_count + 1,
-                    is_estimated = CASE WHEN :est THEN 1 ELSE apinex_daily_usage.is_estimated END,
+                    is_estimated = CASE WHEN :est THEN true ELSE apinex_daily_usage.is_estimated END,
                     updated_at = :updated_at;
             """)
             db.execute(
@@ -287,7 +287,7 @@ def record_usage(
                     "prompt": max(0, prompt_tokens),
                     "comp": max(0, completion_tokens),
                     "tot": max(1, total_tokens),
-                    "est": 1 if is_estimated else 0,
+                    "est": bool(is_estimated),
                     "created_at": now_utc,
                     "updated_at": now_utc,
                 },

@@ -1065,8 +1065,8 @@ def install_ci_workflow_direct(
 
 def verify_remote_ci_installation(repo: Repo, db: Session, current_user: User) -> dict[str, Any]:
     """
-    Check if the proposed workflow file or PR has been merged on GitHub.
-    Transitions setup_status to 'installed' if verified remotely.
+    Check if the proposed workflow file or PR has been merged on GitHub or committed locally.
+    Transitions setup_status to 'installed' if verified remotely or locally.
     """
     ci_conf = get_or_create_repo_ci_config(repo, db)
     if repo.source_type != "github":
@@ -1078,36 +1078,70 @@ def verify_remote_ci_installation(repo: Repo, db: Session, current_user: User) -
     # 1. Check if PR was merged
     is_merged = False
     if ci_conf.pr_number:
-        is_merged = check_pr_merged(repo_full_name, ci_conf.pr_number, token=user_token)
+        try:
+            is_merged = check_pr_merged(repo_full_name, ci_conf.pr_number, token=user_token)
+        except Exception as exc:
+            logger.warning("Error checking PR merged status for %s PR #%s: %s", repo_full_name, ci_conf.pr_number, exc)
 
     # 2. Check if file exists on remote default branch
-    file_exists = check_remote_file_exists(
-        repo_full_name,
-        ci_conf.workflow_path or ".github/workflows/ci.yml",
-        ref=ci_conf.default_branch or "main",
-        token=user_token,
-    )
+    file_exists = False
+    try:
+        file_exists = check_remote_file_exists(
+            repo_full_name,
+            ci_conf.workflow_path or ".github/workflows/ci.yml",
+            ref=ci_conf.default_branch or "main",
+            token=user_token,
+        )
+    except Exception as exc:
+        logger.warning("Error checking remote file existence for %s: %s", repo_full_name, exc)
 
-    if is_merged or file_exists:
+    # 3. Check if workflow file exists locally in repo files or disk
+    local_file_exists = False
+    workflow_rel = (ci_conf.workflow_path or ".github/workflows/ci.yml").lstrip("/").replace("\\", "/")
+    try:
+        from models import RepoFile
+        found = db.query(RepoFile).filter(
+            RepoFile.repo_id == repo.id,
+            RepoFile.path.ilike(f"%{workflow_rel}%")
+        ).first()
+        if found:
+            local_file_exists = True
+    except Exception:
+        pass
+
+    if not local_file_exists and repo.local_path:
+        try:
+            from pathlib import Path
+            local_disk = Path(repo.local_path) / workflow_rel
+            if local_disk.exists():
+                local_file_exists = True
+        except Exception:
+            pass
+
+    if is_merged or file_exists or local_file_exists:
         ci_conf.setup_status = "installed"
         repo.detected_ci = True
         repo.needs_ci_setup = False
         db.commit()
 
     # Fetch deployment status for lifecycle tracking
-    from automation.deployment_detector import detect_repository_deployment
-    deployment_info = detect_repository_deployment(repo, db)
-    deployment_verified = bool(deployment_info.get("status") in ("success", "running") and deployment_info.get("deployment_url"))
+    deployment_verified = False
+    try:
+        from automation.deployment_detector import detect_repository_deployment
+        deployment_info = detect_repository_deployment(repo, db)
+        deployment_verified = bool(deployment_info.get("status") in ("success", "running") and deployment_info.get("deployment_url"))
+    except Exception as exc:
+        logger.warning("Error detecting deployment in verify_remote_ci_installation: %s", exc)
 
     return {
         "setup_status": ci_conf.setup_status,
         "is_merged": is_merged,
-        "file_exists_remotely": file_exists,
+        "file_exists_remotely": bool(file_exists or local_file_exists),
         "workflow_path": ci_conf.workflow_path,
         "pr_url": ci_conf.pr_url,
         "workflow_generated": bool(ci_conf.proposed_workflow_content or ci_conf.active_workflow_content),
         "workflow_committed": bool(ci_conf.setup_status in ("installed", "awaiting_installation")),
-        "remote_workflow_verified": bool(file_exists or is_merged),
+        "remote_workflow_verified": bool(file_exists or is_merged or local_file_exists),
         "workflow_dispatch_accepted": bool(ci_conf.last_run_id or ci_conf.last_run_status),
         "workflow_run_created": bool(ci_conf.last_run_id),
         "latest_workflow_run_completed": bool(ci_conf.last_run_status == "completed" or (ci_conf.last_run_conclusion and ci_conf.last_run_conclusion not in ("queued", "in_progress", "waiting"))),

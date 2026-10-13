@@ -79,14 +79,27 @@ def _get_github_token() -> str:
     return token
 
 
-def _get_headers(token: str | None = None) -> dict[str, str]:
-    """Build standard GitHub REST / GraphQL authorization headers."""
-    t = token or _get_github_token()
-    return {
-        "Authorization": f"Bearer {t}",
+def _get_headers(token: str | None = None, require_token: bool = False) -> dict[str, str]:
+    """Build standard GitHub REST / GraphQL authorization headers.
+    
+    If token is not provided, attempts to use GITHUB_TOKEN from the environment.
+    If require_token is False, returns unauthenticated public headers when no token is available.
+    """
+    headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
+    t = token
+    if not t:
+        try:
+            t = _get_github_token()
+        except EnvironmentError:
+            if require_token:
+                raise
+            t = None
+    if t:
+        headers["Authorization"] = f"Bearer {t}"
+    return headers
 
 
 class UnsupportedProviderError(AutoMergeError):
@@ -194,7 +207,7 @@ def create_pull_request(
         RuntimeError:     If the GitHub API returns an error response.
     """
     owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
+    headers = _get_headers(token=token, require_token=True)
     api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls"
 
     payload = {
@@ -399,7 +412,7 @@ def enable_auto_merge(
         AutoMergeError / RuntimeError: If GraphQL mutation fails or PR is invalid.
     """
     owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
+    headers = _get_headers(token=token, require_token=True)
 
     valid_methods = {"squash": "SQUASH", "merge": "MERGE", "rebase": "REBASE"}
     method_upper = valid_methods.get(merge_method.lower())

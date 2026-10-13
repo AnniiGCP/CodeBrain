@@ -220,8 +220,20 @@ def verify_installation_endpoint(
 ):
     """Check if the proposed workflow file or PR has been merged remotely on GitHub."""
     repo = get_user_repo(repo_id, db, current_user)
-    res = verify_remote_ci_installation(repo, db, current_user)
-    return {"repo_id": repo.id, **res}
+    try:
+        res = verify_remote_ci_installation(repo, db, current_user)
+        return {"repo_id": repo.id, **res}
+    except Exception as exc:
+        logger.exception("Error verifying remote CI installation for repo %s: %s", repo_id, exc)
+        return {
+            "repo_id": repo.id,
+            "setup_status": "awaiting_installation",
+            "message": f"Verification could not reach remote GitHub: {str(exc)}",
+            "is_merged": False,
+            "file_exists_remotely": False,
+            "remote_workflow_verified": False,
+            "workflow_path": ".github/workflows/ci.yml",
+        }
 
 
 @router.get("/{repo_id}/ci/runs", status_code=200, summary="Fetch real GitHub Actions workflow runs")

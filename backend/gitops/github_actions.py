@@ -30,11 +30,11 @@ def fetch_remote_workflow_files(
     List workflow files under .github/workflows from the remote GitHub repository.
     Returns list of dicts with {name, path, html_url, download_url, sha}.
     """
-    owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
-    api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/.github/workflows"
-
     try:
+        owner, repo = _extract_owner_repo(repo_full_name)
+        headers = _get_headers(token=token, require_token=False)
+        api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/.github/workflows"
+
         with httpx.Client(timeout=15) as client:
             resp = client.get(api_url, headers=headers)
         if resp.status_code == 404:
@@ -71,15 +71,15 @@ def fetch_remote_file_content(
     token: str | None = None,
 ) -> str | None:
     """Fetch raw UTF-8 content of a file from remote GitHub repository."""
-    owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
-    clean_path = path.lstrip("/")
-    api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{clean_path}"
-    params = {}
-    if ref:
-        params["ref"] = ref
-
     try:
+        owner, repo = _extract_owner_repo(repo_full_name)
+        headers = _get_headers(token=token, require_token=False)
+        clean_path = path.lstrip("/")
+        api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{clean_path}"
+        params = {}
+        if ref:
+            params["ref"] = ref
+
         with httpx.Client(timeout=15) as client:
             resp = client.get(api_url, headers=headers, params=params)
         if not resp.is_success:
@@ -90,7 +90,7 @@ def fetch_remote_file_content(
             return base64.b64decode(content_b64).decode("utf-8", errors="replace")
         return None
     except Exception as exc:
-        logger.warning("Failed to fetch file content for %s/%s at %s: %s", owner, repo, path, exc)
+        logger.warning("Failed to fetch file content for %s at %s: %s", repo_full_name, path, exc)
         return None
 
 
@@ -111,11 +111,11 @@ def check_pr_merged(
     token: str | None = None,
 ) -> bool:
     """Check whether a pull request has been merged into base branch."""
-    owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
-    api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls/{pr_number}"
-
     try:
+        owner, repo = _extract_owner_repo(repo_full_name)
+        headers = _get_headers(token=token, require_token=False)
+        api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls/{pr_number}"
+
         with httpx.Client(timeout=15) as client:
             resp = client.get(api_url, headers=headers)
         if not resp.is_success:
@@ -123,7 +123,7 @@ def check_pr_merged(
         data = resp.json()
         return bool(data.get("merged", False))
     except Exception as exc:
-        logger.warning("Failed to check PR merge status for %s/%s PR#%d: %s", owner, repo, pr_number, exc)
+        logger.warning("Failed to check PR merge status for %s PR#%d: %s", repo_full_name, pr_number, exc)
         return False
 
 
@@ -136,12 +136,12 @@ def fetch_github_actions_runs(
     Fetch workflow runs from GitHub Actions API.
     Returns list of run metadata dictionaries.
     """
-    owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
-    api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/runs"
-    params = {"per_page": min(limit, 50)}
-
     try:
+        owner, repo = _extract_owner_repo(repo_full_name)
+        headers = _get_headers(token=token, require_token=False)
+        api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/runs"
+        params = {"per_page": min(limit, 50)}
+
         with httpx.Client(timeout=20) as client:
             resp = client.get(api_url, headers=headers, params=params)
         if not resp.is_success:
@@ -181,11 +181,11 @@ def fetch_github_run(
     token: str | None = None,
 ) -> dict[str, Any] | None:
     """Fetch single workflow run metadata directly from GitHub Actions API."""
-    owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
-    api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/runs/{run_id}"
-
     try:
+        owner, repo = _extract_owner_repo(repo_full_name)
+        headers = _get_headers(token=token, require_token=False)
+        api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/runs/{run_id}"
+
         with httpx.Client(timeout=15) as client:
             resp = client.get(api_url, headers=headers)
         if not resp.is_success:
@@ -209,7 +209,7 @@ def fetch_github_run(
             "run_started_at": r.get("run_started_at"),
         }
     except Exception as exc:
-        logger.warning("Failed to fetch run %s for %s/%s: %s", run_id, owner, repo, exc)
+        logger.warning("Failed to fetch run %s for %s: %s", run_id, repo_full_name, exc)
         return None
 
 
@@ -219,11 +219,11 @@ def fetch_github_run_jobs(
     token: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch jobs and steps for a specific workflow run."""
-    owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
-    api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
-
     try:
+        owner, repo = _extract_owner_repo(repo_full_name)
+        headers = _get_headers(token=token, require_token=False)
+        api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+
         with httpx.Client(timeout=20) as client:
             resp = client.get(api_url, headers=headers)
         if not resp.is_success:
@@ -254,7 +254,7 @@ def fetch_github_run_jobs(
             })
         return jobs
     except Exception as exc:
-        logger.warning("Failed to fetch jobs for run %s (%s/%s): %s", run_id, owner, repo, exc)
+        logger.warning("Failed to fetch jobs for run %s (%s): %s", run_id, repo_full_name, exc)
         return []
 
 
@@ -264,11 +264,11 @@ def fetch_github_job_logs(
     token: str | None = None,
 ) -> str:
     """Fetch raw logs for a job via GitHub Actions API, following redirects."""
-    owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
-    api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/jobs/{job_id}/logs"
-
     try:
+        owner, repo = _extract_owner_repo(repo_full_name)
+        headers = _get_headers(token=token, require_token=False)
+        api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/jobs/{job_id}/logs"
+
         with httpx.Client(timeout=30, follow_redirects=True) as client:
             resp = client.get(api_url, headers=headers)
         if not resp.is_success:
@@ -291,7 +291,7 @@ def dispatch_github_workflow(
     Requires workflow to have `workflow_dispatch` trigger.
     """
     owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
+    headers = _get_headers(token=token, require_token=True)
     clean_wf = workflow_id_or_filename.split("/")[-1]
     api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/actions/workflows/{clean_wf}/dispatches"
 
@@ -324,7 +324,7 @@ def create_or_update_remote_file(
     Does not use local git push or CLI; completely avoids token exposure and URL issues.
     """
     owner, repo = _extract_owner_repo(repo_full_name)
-    headers = _get_headers(token=token)
+    headers = _get_headers(token=token, require_token=True)
     clean_path = path.lstrip("/")
     api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{clean_path}"
 

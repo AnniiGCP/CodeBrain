@@ -64,11 +64,27 @@
 - **Verification:** All 20 markdown rendering and AST architecture tests pass (TAP version 13).
 
 ### 2. Job: Backend Tests & Security Suite
-- **Failing Step:** `Run full regression and security test suites`
-- **Error:** `test_session_secret_production_enforcement: Failed: DID NOT RAISE RuntimeError`.
-- **Root Cause:** `backend/auth.py` had an auto-fallback in `_get_session_secret()` that derived a temporary random key or hashed default strings instead of failing closed in `ENVIRONMENT=production`.
-- **Fix Implemented:** Re-established fail-closed enforcement: if `ENVIRONMENT=production` and `SESSION_SECRET` is missing or equal to defaults, `RuntimeError` is raised.
-- **Verification:** `tests/test_production_security_suite.py` passes 11/11 tests.
+- **Failing Steps & Root Causes:**
+  1. **Missing Test Dependencies in CI:**
+     - Error: `ModuleNotFoundError: No module named 'pypdf'`, `'yaml'`, and `'PIL'`.
+     - Root Cause: Dependencies were present in developer environment but omitted from `backend/requirements.txt`.
+     - Fix: Added `pypdf`, `pyyaml`, and `pillow` to `backend/requirements.txt`.
+  2. **Security Session Secret Fail-Closed Enforcement:**
+     - Error: `test_session_secret_production_enforcement: Failed: DID NOT RAISE RuntimeError`.
+     - Root Cause: `backend/auth.py` had an auto-fallback in `_get_session_secret()` that derived a temporary random key or hashed default strings instead of failing closed in `ENVIRONMENT=production`.
+     - Fix: Re-established fail-closed enforcement: if `ENVIRONMENT=production` and `SESSION_SECRET` is missing or equal to defaults, `RuntimeError` is raised.
+  3. **Repository Quota Isolation:**
+     - Error: `HTTP 400: User has reached maximum repository cap of 10`.
+     - Root Cause: `test_file_content_path_traversal_blocked` used a fixed user ID across test runs on shared SQLite/Postgres.
+     - Fix: Dynamically isolated test user IDs with `uuid.uuid4().hex[:8]`.
+  4. **Docker Runner Execution vs Subprocess in CI:**
+     - Error: `test_full_validation_on_qwen_llm_patch` failed in CI.
+     - Root Cause: Ubuntu runner has Docker daemon running, causing auto-detection to choose Docker over Subprocess, but container lacked host python environment.
+     - Fix: Configured `EXECUTION_PROVIDER: subprocess` in `.github/workflows/ci.yml` and `.github/workflows/deploy.yml`, and added container python executable path normalization in `backend/execution/provider.py`.
+  5. **Model Health Test State Leakage:**
+     - Error: `test_manual_model_selection_preserved` failed because `_MODEL_HEALTH` retained degraded status from earlier tests.
+     - Fix: Explicitly cleared `_MODEL_HEALTH.clear()` at the start of `test_manual_model_selection_preserved`.
+- **Verification:** All 244 backend regression tests pass cleanly (`244 passed, 2 warnings in 53.95s`).
 
 ---
 

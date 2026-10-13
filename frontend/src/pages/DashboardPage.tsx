@@ -117,6 +117,20 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
         const s = await fetchPipelineStatus(repoId);
         setPipelineStatuses((prev) => ({ ...prev, [repoId]: s }));
 
+        // Real-time progressive file tree discovery while pipeline progresses
+        if (!["CLONING", "FAILED"].includes(s.pipeline_status)) {
+          fetchRepoFiles(repoId)
+            .then((data) => {
+              const nodes = Array.isArray(data.tree)
+                ? data.tree
+                : data.tree?.children || [data.tree];
+              if (nodes && nodes.length > 0) {
+                setFileTree((curr) => (curr.length === 0 ? nodes : curr));
+              }
+            })
+            .catch(() => {});
+        }
+
         if (["DONE", "FAILED"].includes(s.pipeline_status)) {
           clearInterval(pollingRef.current[repoId]);
           delete pollingRef.current[repoId];

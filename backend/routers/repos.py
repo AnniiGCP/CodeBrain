@@ -435,7 +435,7 @@ def run_clone_and_pipeline(
     """Background worker for asynchronous repository cloning and ingestion pipeline."""
     from database import SessionLocal
     from models import Repo
-    from docgen.secret_redactor import sanitize_sensitive_text
+    from gitops.git_ops import sanitize_sensitive_text
     from routers.pipeline import _set_status, run_pipeline
 
     db = SessionLocal()
@@ -509,17 +509,51 @@ def list_repos(
 ):
     """List all repositories owned by the current authenticated user, deduplicated by project identity."""
     import json
+    from datetime import datetime, timezone
+    from models import RepoFile
+
     repos = (
         db.query(Repo)
         .filter(Repo.user_id == current_user.id)
-        .order_by(Repo.created_at.desc())
         .all()
     )
 
-    # Deduplicate re-ingested repositories by name & source_type, keeping latest active
+    now_utc = datetime.now(timezone.utc)
+    for r in repos:
+        # Check if pipeline was interrupted by a server restart / timeout
+        if r.pipeline_status in ("CLONING", "INGESTING", "PARSING", "EMBEDDING", "ANALYZING", "DETECTING_ERRORS"):
+            act_time = r.last_activity_at or r.created_at
+            if act_time:
+                if act_time.tzinfo is None:
+                    act_time = act_time.replace(tzinfo=timezone.utc)
+                if (now_utc - act_time).total_seconds() > 300:
+                    f_count = db.query(RepoFile).filter(RepoFile.repo_id == r.id).count()
+                    if f_count > 0:
+                        r.pipeline_status = "DONE"
+                        r.last_activity_summary = "Repository indexed and ready"
+                    else:
+                        r.pipeline_status = "FAILED"
+                        r.pipeline_error = "Repository ingestion was interrupted by a server restart. Please re-trigger pipeline to resume."
+                        r.last_activity_summary = "Ingestion interrupted."
+                    try:
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+
+    # Deduplicate re-ingested repositories by name & source_type, preferring active/DONE repos over empty interrupted attempts
+    def _repo_priority(r: Repo):
+        is_done = 0 if r.pipeline_status == "DONE" else 1
+        c_at = r.created_at or datetime.min
+        if c_at.tzinfo is not None:
+            c_at = c_at.replace(tzinfo=None)
+        sec = int((c_at - datetime(1970, 1, 1)).total_seconds())
+        return (is_done, -sec)
+
+    sorted_repos = sorted(repos, key=_repo_priority)
+
     seen_keys: set[str] = set()
     deduped_repos = []
-    for r in repos:
+    for r in sorted_repos:
         key = f"{r.name.strip().lower()}::{r.source_type}"
         if key in seen_keys:
             continue

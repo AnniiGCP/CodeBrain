@@ -67,3 +67,7 @@ def sanitize_host_paths(text: str) -> str:
     sanitized = re.sub(r"/(?:home|Users)/[^/\s\r\n\"'\)]+", "<HOST_USER_DIR>", sanitized)
     return sanitized
 
+
+# Alias for backward-compatibility with other modules
+sanitize_sensitive_text = redact_secrets
+

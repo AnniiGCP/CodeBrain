@@ -104,6 +104,7 @@ class Repo(Base):
     automation_logs = relationship("AutomationLog", back_populates="repo", cascade="all, delete-orphan")
     conversations = relationship("Conversation", back_populates="repo", cascade="all, delete-orphan")
     readme = relationship("RepoReadme", back_populates="repo", uselist=False, cascade="all, delete-orphan")
+    doc = relationship("RepoDoc", back_populates="repo", uselist=False, cascade="all, delete-orphan")
     ci_config = relationship("RepoCiConfig", back_populates="repo", uselist=False, cascade="all, delete-orphan")
     ci_runs = relationship("RepoCiRun", back_populates="repo", cascade="all, delete-orphan", order_by="desc(RepoCiRun.created_at)")
 
@@ -297,6 +298,31 @@ class RepoReadme(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     repo = relationship("Repo", back_populates="readme")
+
+
+class RepoDoc(Base):
+    """
+    Stores the full canonical 16-section technical documentation suite per repository in database.
+    Enforces permanence across cloud container restarts and browser refreshes.
+    """
+    __tablename__ = "repo_docs"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    repo_id = Column(String, ForeignKey("repos.id"), nullable=False, unique=True, index=True)
+    commit_sha = Column(String, default="HEAD", nullable=False)
+    doc_version = Column(String, default="v1.6", nullable=False)
+    is_complete = Column(Boolean, default=False, nullable=False)
+    master_content = Column(Text, nullable=False)
+    sections_json = Column(Text, nullable=False)  # JSON-encoded array of sections
+    manifest_json = Column(Text, nullable=True)   # JSON-encoded documentation manifest
+    validation_summary_json = Column(Text, nullable=True)  # JSON-encoded validation summary
+    source_fingerprint = Column(String, nullable=True)
+    status = Column(String, default="READY", nullable=False)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    repo = relationship("Repo", back_populates="doc")
 
 
 class RepoCiConfig(Base):

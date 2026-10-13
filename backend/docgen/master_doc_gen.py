@@ -1455,5 +1455,66 @@ def generate_full_project_documentation(
     except Exception as json_err:
         logger.error("Failed to compile JSON export for %s: %s", repo_id, json_err)
 
+    # ── PERSIST TO DATABASE (Supabase PostgreSQL) FOR TRUE CLOUD DURABILITY ──
+    try:
+        if db is not None:
+            import uuid as _uuid
+            from models import RepoDoc
+
+            existing_doc = db.query(RepoDoc).filter(RepoDoc.repo_id == repo_id).first()
+            sections_data = [
+                {
+                    "section_number": s.section_number,
+                    "title": s.title,
+                    "schema_key": s.schema_key,
+                    "filename": s.filename,
+                    "content": s.content,
+                    "status": s.status,
+                    "is_complete": s.is_complete,
+                    "has_diagram": s.has_diagram,
+                    "warnings": s.warnings,
+                }
+                for s in result.sections
+            ]
+            manifest_data = {}
+            manifest_file = metadata_dir / "documentation-manifest.json"
+            if manifest_file.exists():
+                try:
+                    manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            if existing_doc:
+                existing_doc.commit_sha = commit_sha
+                existing_doc.doc_version = doc_version
+                existing_doc.is_complete = is_suite_complete
+                existing_doc.master_content = master_readme_content
+                existing_doc.sections_json = json.dumps(sections_data)
+                existing_doc.manifest_json = json.dumps(manifest_data)
+                existing_doc.validation_summary_json = json.dumps(validation_summary)
+                existing_doc.status = "READY"
+                existing_doc.updated_at = now_utc
+            else:
+                new_doc = RepoDoc(
+                    id=str(_uuid.uuid4()),
+                    repo_id=repo_id,
+                    commit_sha=commit_sha,
+                    doc_version=doc_version,
+                    is_complete=is_suite_complete,
+                    master_content=master_readme_content,
+                    sections_json=json.dumps(sections_data),
+                    manifest_json=json.dumps(manifest_data),
+                    validation_summary_json=json.dumps(validation_summary),
+                    status="READY",
+                    created_at=now_utc,
+                    updated_at=now_utc,
+                )
+                db.add(new_doc)
+            db.commit()
+            logger.info("Persisted RepoDoc to PostgreSQL for repo %s (is_complete=%s)", repo_id, is_suite_complete)
+    except Exception as db_err:
+        logger.error("Failed to persist RepoDoc to database for repo %s: %s", repo_id, db_err)
+
     return result
 

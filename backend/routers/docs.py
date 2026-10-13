@@ -325,17 +325,38 @@ def get_doc_sections_endpoint(
 
     repo = get_user_repo(repo_id, db, current_user)
 
-    docs_dir = STORAGE_ROOT / repo.id / "docs"
-    from models import RepoReadme
+    from models import RepoDoc, RepoReadme
     saved_rm = db.query(RepoReadme).filter(RepoReadme.repo_id == repo.id).first()
     saved_rm_content = saved_rm.content if (saved_rm and saved_rm.content) else ""
 
+    # 1. Primary: Database check for permanent persistence across cloud container restarts & page reloads
+    saved_doc = db.query(RepoDoc).filter(RepoDoc.repo_id == repo.id).first()
+    if saved_doc and saved_doc.sections_json:
+        try:
+            sections = json.loads(saved_doc.sections_json)
+            if sections:
+                return {
+                    "repo_id": repo.id,
+                    "has_docs": True,
+                    "is_complete": saved_doc.is_complete,
+                    "total_sections": len(sections),
+                    "completed_sections": sum(1 for s in sections if s.get("is_complete")),
+                    "sections": sections,
+                    "master_content": saved_doc.master_content or "",
+                    "readme_content": saved_rm_content,
+                }
+        except Exception as p_err:
+            logger.warning("Failed parsing saved RepoDoc sections for %s: %s", repo.id, p_err)
+
+    # 2. Secondary: Local disk check
+    docs_dir = STORAGE_ROOT / repo.id / "docs"
     if not docs_dir.exists():
         return {
             "repo_id": repo.id,
             "has_docs": bool(saved_rm_content),
             "is_complete": False,
             "total_sections": 16,
+            "completed_sections": 0,
             "sections": [],
             "master_content": "",
             "readme_content": saved_rm_content,

@@ -40,6 +40,7 @@ jobs:
           DATABASE_URL: sqlite:///./test_app.db
           SESSION_SECRET: test-session-secret-for-ci-runs-32-chars-minimum
           ALLOW_DEV_LOGIN: "false"
+          EXECUTION_PROVIDER: subprocess
         run: |
           python -m pytest -v --tb=short --junitxml=pytest-results.xml || (python -c "import xml.etree.ElementTree as ET; tree = ET.parse('pytest-results.xml'); [print(f'::error title=Failed: {tc.get(\"name\")}::{tc.get(\"classname\")}.{tc.get(\"name\")}: {f.text[:200]}') for tc in tree.iter('testcase') for f in tc.iter('failure')]; [print(f'::error title=Error: {tc.get(\"name\")}::{tc.get(\"classname\")}.{tc.get(\"name\")}: {e.text[:200]}') for tc in tree.iter('testcase') for e in tc.iter('error')]" && exit 1)
 

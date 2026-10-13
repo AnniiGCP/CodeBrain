@@ -178,7 +178,7 @@ def test_categorization_test_assertion_failed():
 
 # ── Test 5: End-to-End Patch Validation on qwen_llm.py ────────────────────────
 
-def test_full_validation_on_qwen_llm_patch(tmp_path):
+def test_full_validation_on_qwen_llm_patch(tmp_path, monkeypatch):
     """
     Simulates the exact user issue:
     A repository contains:
@@ -190,6 +190,13 @@ def test_full_validation_on_qwen_llm_patch(tmp_path):
       2. Run verification on llm_service/tests/qwen_llm.py without crashing on backend's indentation error.
       3. Return passed=True with exit_code=0.
     """
+    from execution.provider import reset_execution_provider
+    monkeypatch.setenv("EXECUTION_PROVIDER", "subprocess")
+    monkeypatch.setenv("PUBLIC_DEPLOYMENT", "false")
+    monkeypatch.setenv("ISOLATED_RUNTIME_REQUIRED", "false")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    reset_execution_provider()
+
     from models import Repo
 
     # Create dummy mock db
@@ -251,6 +258,8 @@ def test_full_validation_on_qwen_llm_patch(tmp_path):
     finally:
         import shutil
         shutil.rmtree(repo_storage, ignore_errors=True)
+        from execution.provider import reset_execution_provider
+        reset_execution_provider()
 
 
 # ── Test 6: Isolated Container Runtime Enforcement ────────────────────────────

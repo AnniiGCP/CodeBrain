@@ -125,6 +125,8 @@ def test_model_routing_for_project_overview():
 
 def test_manual_model_selection_preserved():
     """User-specified model override is preserved and not replaced by Auto."""
+    from ai.config import _MODEL_HEALTH
+    _MODEL_HEALTH.clear()
     manual_route = get_model_for_task(
         "PROJECT_OVERVIEW",
         user_preferred_provider="nvidia",

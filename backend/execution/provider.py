@@ -403,7 +403,10 @@ class DockerExecutionProvider(BaseExecutionProvider):
             if k in ("PYTHONPATH", "PYTHONUNBUFFERED", "CI", "NODE_ENV", "PATH"):
                 docker_args.extend(["-e", f"{k}={v}"])
 
-        docker_args.extend([self.image, "sh", "-c", cmd])
+        container_cmd = cmd
+        if sys.executable in container_cmd:
+            container_cmd = container_cmd.replace(f'"{sys.executable}"', "python").replace(sys.executable, "python")
+        docker_args.extend([self.image, "sh", "-c", container_cmd])
 
         try:
             proc = subprocess.run(

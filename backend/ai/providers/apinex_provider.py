@@ -120,12 +120,30 @@ class ApinexProvider(AIProvider):
         if response_format:
             payload["response_format"] = response_format
 
-        try:
-            resp = httpx.post(endpoint, headers=headers, json=payload, timeout=60.0)
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeout(f"APInex request timed out on {target_model}: {exc}", provider="apinex") from exc
-        except Exception as exc:
-            raise ProviderUnavailable(f"APInex connection failed on {target_model}: {exc}", provider="apinex") from exc
+        models_to_try = [target_model]
+        if target_model.startswith("free/"):
+            models_to_try.append(target_model.replace("free/", "", 1))
+        elif not target_model.startswith("free/"):
+            models_to_try.append(f"free/{target_model}")
+
+        resp = None
+        last_exc = None
+        for m_name in models_to_try:
+            target_model = m_name
+            payload["model"] = m_name
+            try:
+                resp = httpx.post(endpoint, headers=headers, json=payload, timeout=60.0)
+                if resp.status_code == 402 and m_name != models_to_try[-1]:
+                    logger.warning("[APINEX] Model '%s' returned 402 (check-in required), auto-retrying with '%s'", m_name, models_to_try[-1])
+                    continue
+                break
+            except httpx.TimeoutException as exc:
+                last_exc = ProviderTimeout(f"APInex request timed out on {target_model}: {exc}", provider="apinex")
+            except Exception as exc:
+                last_exc = ProviderUnavailable(f"APInex connection failed on {target_model}: {exc}", provider="apinex")
+
+        if resp is None:
+            raise last_exc or ProviderUnavailable(f"APInex connection failed on {target_model}", provider="apinex")
 
         if resp.status_code == 401 or resp.status_code == 403:
             raise ProviderUnavailable(
@@ -237,10 +255,30 @@ class ApinexProvider(AIProvider):
         generated_chunks: list[str] = []
         captured_usage: Optional[dict] = None
 
+        models_to_try = [target_model]
+        if target_model.startswith("free/"):
+            models_to_try.append(target_model.replace("free/", "", 1))
+        elif not target_model.startswith("free/"):
+            models_to_try.append(f"free/{target_model}")
+
         try:
             client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
             async with client:
-                async with client.stream("POST", endpoint, headers=headers, json=payload) as resp:
+                stream_ctx = None
+                resp = None
+                for m_name in models_to_try:
+                    target_model = m_name
+                    payload["model"] = m_name
+                    stream_ctx = client.stream("POST", endpoint, headers=headers, json=payload)
+                    resp = await stream_ctx.__aenter__()
+                    if resp.status_code == 402 and m_name != models_to_try[-1]:
+                        logger.warning("[APINEX] Streaming model '%s' returned 402 (check-in required), auto-retrying with '%s'", m_name, models_to_try[-1])
+                        await stream_ctx.__aexit__(None, None, None)
+                        stream_ctx = None
+                        continue
+                    break
+
+                try:
                     if resp.status_code == 401 or resp.status_code == 403:
                         raise ProviderUnavailable(
                             f"APInex streaming authentication failure ({resp.status_code}).",
@@ -294,6 +332,9 @@ class ApinexProvider(AIProvider):
                                     yield token
                         except (json.JSONDecodeError, KeyError, IndexError):
                             continue
+                finally:
+                    if stream_ctx is not None:
+                        await stream_ctx.__aexit__(None, None, None)
 
         except (ProviderRateLimited, ProviderUnavailable, ProviderInvalidResponse):
             raise

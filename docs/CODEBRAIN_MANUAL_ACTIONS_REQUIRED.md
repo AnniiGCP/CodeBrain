@@ -1,73 +1,54 @@
 # CodeBrain — Manual Actions Required Checklist
 
-**Date:** October 2026  
-**Audience:** Repository Owner / Production Administrator  
+This checklist documents the exact actions required to finalize the production deployment and update downstream repository workflows.
 
 ---
 
-## 1. Status Overview
+## Action 1: Deploy Verified Fixes to Production (Git Push)
 
-All core application bugs, database connection drops, deadlocks, documentation persistence mechanisms, and code-fix workflows have been fixed, tested, and verified directly in code.
-
-The following checklist details optional configuration optimizations and external dashboard steps that require user involvement or secrets.
-
----
-
-## 2. Action Checklist
-
-### Action 1: Verify GitHub OAuth Token Scopes
-- **Dashboard / Tool:** [GitHub Developer Settings — OAuth Apps](https://github.com/settings/developers)
-- **Why It Is Needed:** For automated branch creation and Pull Requests on private or user-owned repositories, GitHub OAuth requires the `repo` scope.
-- **Expected Outcome:** Users who log in via GitHub will automatically have push permissions to open PRs directly on their own repositories rather than falling back to `APPLIED_LOCAL`.
-- **How to Verify:** Import a repository owned by your authenticated GitHub account, generate a fix, and click "Apply Fix". It will push branch `ai-fix/...` and open a Pull Request.
-
-### Action 2: Supabase Connection String Configuration
-- **Dashboard / Tool:** [Supabase Project Dashboard](https://supabase.com/dashboard) -> Settings -> Database -> Connection string
-- **Configuration:** Ensure the environment variable `DATABASE_URL` on Render uses the **Transaction Pooler** (`port 6543`, `aws-0-*.pooler.supabase.com`) with `sslmode=require`.
-- **Why It Is Needed:** Standard direct connection (`port 5432`) has a strict connection limit on Supabase Free Tier (maximum 15 connections), whereas the pooler (`port 6543`) supports high concurrency. CodeBrain has already enabled `NullPool`, `pool_pre_ping=True`, and TCP keepalives to prevent disconnects.
-- **How to Verify:** Visit `https://codebrain-backend.onrender.com/health` and verify `"database": "connected"`.
-
-### Action 3: Production Environment Variables on Render
-- **Dashboard / Tool:** [Render Dashboard](https://dashboard.render.com) -> `codebrain-backend` -> Environment
-- **Variables to Confirm:**
-  1. `APINEX_API_KEY`: Required for APINex GPT-6 Luna quota allocation.
-  2. `NVIDIA_API_KEY`: Required for primary NVIDIA NIM fallback (`deepseek-v4.1-flash`, `glm-5-3`).
-  3. `GROQ_API_KEY`: Required for secondary Groq fallback.
-  4. `SESSION_SECRET`: A 32+ character random secret string for HMAC session cookie signing.
-  5. `GITHUB_TOKEN`: Fallback PAT for public GitHub API queries.
-- **Why It Is Needed:** Ensures AI requests always execute with high-quality models and fallback to NVIDIA/Groq without disruption.
-- **How to Verify:** Check `GET /ai/health` or `/ai/models` on the deployed backend to verify provider availability.
+- **Where to perform:** Git terminal in repository root (`AnniiGCP/CodeBrain`).
+- **Steps:**
+  1. Review the modified files:
+     ```bash
+     git status
+     ```
+  2. Stage and commit the verified remediation changes:
+     ```bash
+     git add backend/ frontend/ docs/
+     git commit -m "fix(prod): workspace path recovery, mermaid diagram repair, doc version parity, and ci/cd health reporting"
+     ```
+  3. Push to your GitHub repository:
+     ```bash
+     git push origin main
+     ```
+- **Why it is required:** CodeBrain's frontend hosting (Vercel) and backend hosting (Render) automatically deploy new revisions triggered by GitHub pushes on the default branch.
+- **Expected result:**
+  - Vercel automatically deploys the frontend bundle to `https://codebrain-dev.vercel.app`.
+  - Render automatically rebuilds the FastAPI container for `https://codebrain-backend.onrender.com`.
+- **How to verify completion:**
+  - Visit `https://codebrain-dev.vercel.app/dashboard?file=.github%2Fcopilot-instructions.md` and confirm the file loads immediately in the editor.
+  - Visit `https://codebrain-dev.vercel.app/docs` and confirm the flowchart renders without syntax fallbacks.
+  - Visit `https://codebrain-dev.vercel.app/cicd` and confirm pipeline configuration and execution health appear as distinct, accurate badges.
 
 ---
 
-## 3. Alternative Hosting Assessment (Amazon EC2 vs Render)
+## Action 2: Update the CI/CD Pipeline on `AnniiGCP/QuizGenAI`
 
-*As requested in the user prompt, below is the zero-cost-first assessment and step-by-step plan for potentially moving the backend to Amazon EC2.*
+- **Where to perform:** GitHub repository `https://github.com/AnniiGCP/QuizGenAI` or via CodeBrain's CI/CD tab.
+- **Steps:**
+  1. Open CodeBrain at `https://codebrain-dev.vercel.app/cicd`.
+  2. Select `QuizGenAI (github)` from the repository dropdown.
+  3. Click **Generate AI Proposal** to generate the updated pipeline containing `PYTHONPATH: .:${{ github.workspace }}` and honest test reporting (no failing `npm test` step).
+  4. Click **Install via Pull Request** (or **Direct Commit to Branch** if you have direct commit access).
+  5. If installed via PR, open `https://github.com/AnniiGCP/QuizGenAI/pulls`, review the diff, and click **Merge pull request**.
+- **Why it is required:** The previous workflow in QuizGenAI had an invalid `npm test` command for a frontend without test scripts, and missing root package imports in the backend job.
+- **Expected result:** The GitHub Actions workflow run on `QuizGenAI` passes all quality gates without syntax or import errors.
+- **How to verify completion:**
+  - Open `https://github.com/AnniiGCP/QuizGenAI/actions` and verify that the latest run shows green passing checks for both the backend quality gate and frontend build.
 
-### Comparison
-| Dimension | Render (Current) | Amazon EC2 (`t4g.small` / `t3.medium`) |
-| :--- | :--- | :--- |
-| **Memory Limit** | 512 MB (Free Tier) | 1 GB (`t4g.micro` / Free Tier) or 2 GB (`t4g.small`) |
-| **Idle Behavior** | Spins down after 15 minutes of inactivity | Always-on 24/7 (zero cold starts) |
-| **Disk Storage** | Ephemeral (resets on container restart) | Persistent EBS volume (30GB Free Tier) |
-| **Docker Execution**| Unavailable (null sandbox provider) | Supported (real isolated Docker sandbox) |
-| **Cost** | Free | Free Tier (750 hours/month for 12 months on `t2.micro` or `t3.micro`) |
+---
 
-### Recommended Migration Steps (When Approved):
-1. **Launch EC2 Instance:** Ubuntu 24.04 LTS on AWS Free Tier (`t3.micro` or `t4g.small` in `ap-south-1`).
-2. **Install Runtime Dependencies:**
-   ```bash
-   sudo apt update && sudo apt install -y python3.11 python3.11-venv git docker.io
-   sudo usermod -aG docker ubuntu
-   ```
-3. **Clone & Configure:**
-   ```bash
-   git clone https://github.com/AnniiGCP/CodeBrain.git /opt/codebrain
-   cd /opt/codebrain/backend
-   python3.11 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-4. **Setup Systemd Service:** Create `/etc/systemd/system/codebrain.service` running `uvicorn main:app --host 0.0.0.0 --port 8000`.
-5. **Setup Nginx & SSL (Certbot):** Reverse proxy port 80/443 to `127.0.0.1:8000` with free Let's Encrypt TLS certificate.
-6. **Update Vercel:** Point `VITE_API_URL` to the new EC2 domain.
+## Action 3: Database & Secret Verification
+
+- **Database Migrations:** **NONE REQUIRED.** All database models and queries remain 100% backward-compatible with existing Supabase PostgreSQL tables.
+- **Secrets & API Keys:** **NO ACTION NEEDED.** All existing environment variables (`SESSION_SECRET`, `SUPABASE_*`, `APINEX_API_KEY`, `NVIDIA_API_KEY`, `GROQ_API_KEY`) remain securely configured on Render and Vercel. No keys were modified, leaked, or exposed.

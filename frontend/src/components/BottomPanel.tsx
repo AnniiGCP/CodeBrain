@@ -46,11 +46,12 @@ const BottomPanel: FC<BottomPanelProps> = ({
 }) => {
   // ── Problems Tab State ───────────────────────────────────────────────────────
   const [severityFilter, setSeverityFilter] = useState<string>("all");
-  const errorCount = errors.filter((e) => e.severity === "error" || e.category === "ERROR").length;
-  const warningCount = errors.filter((e) => e.severity === "warning" || e.category === "WARNING").length;
+  const activeErrors = errors.filter((e) => e.fix_status !== "RESOLVED");
+  const errorCount = activeErrors.filter((e) => e.severity === "error" || e.category === "ERROR").length;
+  const warningCount = activeErrors.filter((e) => e.severity === "warning" || e.category === "WARNING").length;
   const totalProblemsCount = errorCount + warningCount;
 
-  const filteredErrors = errors.filter((e) => {
+  const filteredErrors = activeErrors.filter((e) => {
     if (severityFilter === "error") return e.severity === "error" || e.category === "ERROR";
     if (severityFilter === "warning") return e.severity === "warning" || e.category === "WARNING";
     return true;

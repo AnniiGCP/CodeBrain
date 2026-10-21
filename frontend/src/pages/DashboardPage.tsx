@@ -261,8 +261,37 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   // ── Tab Management Helpers ──────────────────────────────────────────────────
 
+  const previousRepoIdRef = useRef<string | null>(null);
+
+  // Isolate repository tabs when switching projects
+  useEffect(() => {
+    if (!activeRepo) return;
+    if (previousRepoIdRef.current && previousRepoIdRef.current !== activeRepo.repo_id) {
+      setTabs([]);
+      setActiveTabId(null);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("repoId", activeRepo.repo_id);
+        next.delete("file");
+        next.delete("line");
+        return next;
+      }, { replace: false });
+    }
+    previousRepoIdRef.current = activeRepo.repo_id;
+  }, [activeRepo, setSearchParams]);
+
   const openFileTab = useCallback((rawFilePath: string, line?: number, initialContent = "", updateUrl = true) => {
-    const filePath = decodeURIComponent(rawFilePath).replace(/\\/g, "/").replace(/^\/+/, "");
+    let filePath = rawFilePath.trim().replace(/\\/g, "/");
+    while (filePath.startsWith("./")) {
+      filePath = filePath.slice(2);
+    }
+    filePath = filePath.replace(/^\/+/, "");
+    try {
+      if (filePath.includes("%")) {
+        filePath = decodeURIComponent(filePath);
+      }
+    } catch {}
+
     const id = `file:${filePath}`;
     setActiveTabId(id);
 
@@ -288,6 +317,9 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
         next.set("file", filePath);
+        if (activeRepoRef.current) {
+          next.set("repoId", activeRepoRef.current.repo_id);
+        }
         if (line) next.set("line", String(line));
         else next.delete("line");
         return next;
@@ -430,7 +462,17 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   // Synchronize browser URL parameter with open file (deep link & browser back/forward)
   useEffect(() => {
     if (paramFile) {
-      const decoded = decodeURIComponent(paramFile).replace(/\\/g, "/").replace(/^\/+/, "");
+      let decoded = paramFile.trim().replace(/\\/g, "/");
+      while (decoded.startsWith("./")) {
+        decoded = decoded.slice(2);
+      }
+      decoded = decoded.replace(/^\/+/, "");
+      try {
+        if (decoded.includes("%")) {
+          decoded = decodeURIComponent(decoded);
+        }
+      } catch {}
+
       const targetLine = paramLine ? parseInt(paramLine, 10) : undefined;
       const targetId = `file:${decoded}`;
       if (activeTabId !== targetId) {
@@ -720,13 +762,20 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
           passed: res.passed,
           error: res.error || undefined,
         });
-        setErrors((prev) =>
-          prev.map((e) =>
-            e.id === errorId
-              ? { ...e, fix_status: res.fix_status, pr_url: res.pr_url, pr_id: (res as any).pr_id ?? (res as any).pr_number }
-              : e
-          )
-        );
+        if ((res as any).resolved || res.fix_status === "RESOLVED") {
+          setErrors((prev) => prev.filter((e) => e.id !== errorId));
+        } else {
+          setErrors((prev) =>
+            prev.map((e) =>
+              e.id === errorId
+                ? { ...e, fix_status: res.fix_status, pr_url: res.pr_url, pr_id: (res as any).pr_id ?? (res as any).pr_number }
+                : e
+            )
+          );
+        }
+        fetchErrorReports(repoId)
+          .then((fresh) => setErrors(fresh.errors || []))
+          .catch(() => {});
       } else {
         const res = await applyFix(repoId, {
           diff: fix.diff,
@@ -846,8 +895,9 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   const activeRepoId = activeRepo ? activeRepo.repo_id : "";
   const currentPipelineData = activeRepoId ? pipelineStatuses[activeRepoId] || null : null;
-  const errorCount = errors.filter((e) => e.severity === "error").length;
-  const warningCount = errors.filter((e) => e.severity === "warning").length;
+  const activeErrors = errors.filter((e) => e.fix_status !== "RESOLVED");
+  const errorCount = activeErrors.filter((e) => e.severity === "error" || e.category === "ERROR").length;
+  const warningCount = activeErrors.filter((e) => e.severity === "warning" || e.category === "WARNING").length;
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeFilePath = activeTab?.type === "file" ? activeTab.filePath : undefined;
 
@@ -877,7 +927,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
               setActiveSidebarTab(tab);
             }
           }}
-          errorCount={errors.length}
+          errorCount={activeErrors.length}
           user={user}
           onLogout={onLogout}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}

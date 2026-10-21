@@ -47,14 +47,17 @@ def list_error_reports(
     repo_id: str,
     severity: str | None = None,   # filter: "error" | "warning" | "info"
     fix_status: str | None = None,  # filter: "PENDING" | "READY" | "APPLIED" | "FAILED" etc.
+    include_resolved: bool = False,
     limit: int = 200,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all ErrorReport rows for a repository (scoped to owner)."""
+    """List all ErrorReport rows for a repository (scoped to owner). Excludes RESOLVED by default."""
     repo = get_user_repo(repo_id, db, current_user)
 
     q = db.query(ErrorReport).filter(ErrorReport.repo_id == repo.id)
+    if not include_resolved:
+        q = q.filter(~ErrorReport.fix_status.in_(["RESOLVED"]))
     if severity:
         q = q.filter(ErrorReport.severity == severity)
     if fix_status:

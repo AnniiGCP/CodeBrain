@@ -172,10 +172,14 @@ function sanitizeMermaidChart(rawChart, isChat = false) {
     return processed.join("\n").trim();
   }
 
+  // Shared default for Docs, Editor, and other non-chat surfaces
   if (/^(graph|flowchart)\s+[A-Za-z]+/i.test(cleaned)) {
     cleaned = cleaned.replace(/->>/g, "-->");
+    // Quote unquoted labels containing parentheses or linebreaks
     cleaned = cleaned.replace(/\[(?!\()([^"\]\n]*?\([^\]\n]*?\)[^"\]\n]*?)(?<!\))\]/g, '["$1"]');
+    cleaned = cleaned.replace(/\[(?!\()([^"\]\n]*?<br\s*\/?>[^"\]\n]*?)(?<!\))\]/g, '["$1"]');
   }
+
   return cleaned;
 }
 

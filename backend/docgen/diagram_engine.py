@@ -618,7 +618,7 @@ def build_database_tree_diagram_spec(graph) -> Optional[DiagramSpec]:
         nodes.append(DiagramNode(
             id=tbl_id,
             label=f"Table: {model.model_name}",
-            sublabel=f"PK: [{pks}] • {len(model.fields)} cols",
+            sublabel=f"PK: ({pks}) - {len(model.fields)} cols",
             kind="backend",
         ))
         edges.append(DiagramEdge(source=root_id, target=tbl_id, label="schema"))
@@ -998,14 +998,25 @@ def plan_all_diagrams(graph) -> Tuple[Dict[str, DiagramSpec], Dict[str, Any]]:
 
 # ── MULTI-FORMAT DETERMINISTIC RENDERERS ──────────────────────────────────────
 
+def _sanitize_mermaid_label(text: str) -> str:
+    if not text:
+        return ""
+    s = str(text).replace('"', "'").replace('`', "'")
+    s = s.replace('[', '(').replace(']', ')')
+    s = s.replace('{', '(').replace('}', ')')
+    s = s.replace('•', '-')
+    s = re.sub(r'<(?!br\s*/?>)[^>]+>', '', s)
+    return s.strip()
+
+
 def render_mermaid(spec: DiagramSpec) -> str:
     """Renders DiagramSpec to clean, strictly valid Mermaid syntax for frontend rendering."""
     lines = ["```mermaid", "flowchart TD"]
     for node in spec.nodes:
         clean_id = re.sub(r'[^a-zA-Z0-9_]', '_', str(node.id or "node"))
-        clean_label = node.label.replace('"', "'").replace('<', '').replace('>', '')
+        clean_label = _sanitize_mermaid_label(node.label)
         if node.sublabel:
-            clean_sub = node.sublabel.replace('"', "'").replace('<', '').replace('>', '')
+            clean_sub = _sanitize_mermaid_label(node.sublabel)
             lines.append(f'    {clean_id}["{clean_label}<br/>{clean_sub}"]')
         else:
             lines.append(f'    {clean_id}["{clean_label}"]')
@@ -1014,7 +1025,7 @@ def render_mermaid(spec: DiagramSpec) -> str:
         clean_src = re.sub(r'[^a-zA-Z0-9_]', '_', str(edge.source or "src"))
         clean_tgt = re.sub(r'[^a-zA-Z0-9_]', '_', str(edge.target or "tgt"))
         if edge.label:
-            clean_lbl = edge.label.replace('"', "'").replace('<', '').replace('>', '')
+            clean_lbl = _sanitize_mermaid_label(edge.label).replace('|', '/')
             lines.append(f"    {clean_src} -->|{clean_lbl}| {clean_tgt}")
         else:
             lines.append(f"    {clean_src} --> {clean_tgt}")

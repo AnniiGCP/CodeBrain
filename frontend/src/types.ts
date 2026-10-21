@@ -331,6 +331,7 @@ export type FixStatus =
   | "APPLIED"
   | "APPLIED_LOCAL"
   | "FIX_APPLIED"
+  | "RESOLVED"
   | "OPEN"
   | "REJECTED"
   | "FAILED"

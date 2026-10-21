@@ -194,25 +194,24 @@ def build_modules_table(graph: RepoKnowledgeGraph) -> str:
 
 
 def build_classes_table(graph: RepoKnowledgeGraph) -> str:
-    if not graph.classes:
-        return "No AST class symbols were identified in the analyzed repository."
-    rows = ["| Class | Source File | Purpose | Methods | Fields |", "|---|---|---|---|---|"]
-    for c in graph.classes[:15]:
-        methods = ", ".join(c.methods[:4]) if c.methods else "Data class / record"
-        fields = ", ".join(c.fields[:4]) if getattr(c, "fields", None) else "Instance attributes"
-        rows.append(f"| `{c.name}` | `{c.file_path}` | Core application type | `{methods}` | `{fields}` |")
-    return "\n".join(rows)
-
-
-def build_functions_table(graph: RepoKnowledgeGraph) -> str:
-    if not graph.functions:
-        return "No standalone AST function handlers were identified in the analyzed repository."
-    rows = ["| Function | Source File | Signature | Key Calls / Subroutines |", "|---|---|---|---|"]
-    for f in graph.functions[:15]:
-        sig = f.signature or "()"
-        calls = ", ".join(f.calls[:3]) if getattr(f, "calls", None) else "Standard routines"
-        rows.append(f"| `{f.name}` | `{f.file_path}` | `{sig}` | `{calls}` |")
-    return "\n".join(rows)
+    if not graph.classes and not graph.functions:
+        return "No AST class or function symbols were identified in the analyzed repository."
+    sections = []
+    if graph.classes:
+        rows = ["| Class | Source File | Purpose | Methods | Fields |", "|---|---|---|---|---|"]
+        for c in graph.classes[:15]:
+            methods = ", ".join(c.methods[:4]) if c.methods else "Data class / record"
+            fields = ", ".join(c.fields[:4]) if getattr(c, "fields", None) else "Instance attributes"
+            rows.append(f"| `{c.name}` | `{c.file_path}` | Core application type | `{methods}` | `{fields}` |")
+        sections.append("#### Important AST Classes\n\n" + "\n".join(rows))
+    if graph.functions:
+        rows = ["| Function | Source File | Signature | Key Calls / Subroutines |", "|---|---|---|---|"]
+        for f in graph.functions[:15]:
+            sig = f.signature or "()"
+            calls = ", ".join(f.calls[:3]) if getattr(f, "calls", None) else "Standard routines"
+            rows.append(f"| `{f.name}` | `{f.file_path}` | `{sig}` | `{calls}` |")
+        sections.append("#### Important AST Functions & Handlers\n\n" + "\n".join(rows))
+    return "\n\n".join(sections)
 
 
 def build_apis_table(graph: RepoKnowledgeGraph) -> str:
@@ -439,14 +438,12 @@ def build_deterministic_section_content(
     """
     Constructs fact-grounded section content strictly from repository evidence.
     Uses dynamic sequential numbering (active_num) for all headings, figure references, and diagrams.
-    Structures sections with explicit numbered subheadings (## {active_num}.1, ## {active_num}.2, etc.)
-    and comprehensive technical tables matching publication reference standards.
     """
     project_name = graph.project_metadata.project_name if graph.project_metadata else graph.repo_name
 
     # Evidence-grounded generation per section
     if orig_num == 1:
-        # 1. Project Overview
+        # Project Overview (Full Executive Introduction per Requirement 4)
         lang_list = ", ".join([f"{k} ({v} files)" for k, v in graph.languages.items()])
         entry_str = f"`{', '.join(graph.entry_points)}`" if graph.entry_points else "Standard package entry points"
         ps_spec = diagram_specs.get("problem_solution")
@@ -461,112 +458,83 @@ def build_deterministic_section_content(
         components_summary = ", ".join([f"`{d.path}/`" for d in graph.directory_structure[:6]]) or "core modules"
         dirs_explanation = "\n".join([f"- **`{d.path}/`**: {d.purpose} ({d.file_count} files, key files: `{', '.join(d.key_files[:3])}`)" for d in graph.directory_structure[:8]])
 
-        identity_table = (
-            "| Attribute | Detail |\n"
-            "|---|---|\n"
-            f"| Repository Name | `{project_name}` |\n"
-            f"| System Classification | {graph.app_type} |\n"
-            f"| Source Volume | **{graph.total_files}** source files across **{len(graph.directory_structure)}** primary directories |\n"
-            f"| Analyzed Code Symbols | **{graph.total_symbols}** AST classes, functions, and symbols |\n"
-            f"| Primary Entry Points | {entry_str} |"
-        )
-
         return (
-            f"## {active_num}.1 Project Identity\n\n"
-            f"{identity_table}\n\n"
-            f"## {active_num}.2 Executive Summary\n\n"
+            f"### Project Identity\n\n"
+            f"- **Repository Name:** `{project_name}`\n"
+            f"- **System Classification:** {graph.app_type}\n"
+            f"- **Source Volume:** **{graph.total_files}** source files across **{len(graph.directory_structure)}** primary directories\n"
+            f"- **Analyzed Code Symbols:** **{graph.total_symbols}** AST classes, functions, and symbols\n"
+            f"- **Primary Entry Point:** {entry_str}\n\n"
+            f"### Executive Summary\n\n"
             f"**{project_name}** is a software engineering codebase implementing a **{graph.app_type}** topology. "
             f"Static code inspection and manifest analysis reveal an application designed to deliver deterministic, modular functionality "
-            f"with verified language implementations spanning {lang_list}. The codebase is structured to maintain high cohesion and modular boundary "
-            f"separation, ensuring clean distinctions between presentation, logic, and data storage layers.\n\n"
-            f"## {active_num}.3 Problem Statement\n\n"
+            f"with verified language implementations spanning {lang_list}.\n\n"
+            f"### Problem Statement\n\n"
             f"{problem_stmt}\n\n"
-            f"## {active_num}.4 Purpose & Objectives\n\n"
+            f"### Purpose & Objectives\n\n"
             f"- **Primary Purpose:** Provide an end-to-end implementation for {graph.project_purpose}\n"
             f"- **Architecture Goal:** Maintain high cohesion and modular boundary separation across {components_summary}.\n"
             f"- **Quality Objective:** Ensure testability, maintainability, and clean separation between presentation, logic, and data storage.\n\n"
-            f"## {active_num}.5 Intended Users & Scope\n\n"
+            f"### Intended Users & Scope\n\n"
             f"- **Target Audience:** Developers, systems engineers, and API consumers interacting with {project_name}.\n"
             f"- **In-Scope Capabilities:** Source modules, interfaces, and configurations directly housed within `{project_name}`.\n"
             f"- **Out-of-Scope Elements:** Third-party upstream hosting platforms, unmanaged external networks, and external hardware resources.\n\n"
-            f"## {active_num}.6 Key Capabilities & Major Components\n\n"
+            f"### Key Capabilities & Major Components\n\n"
             f"The codebase is divided into modular subsystems with specific responsibilities:\n\n"
             f"{dirs_explanation}\n"
             f"{ps_mermaid}\n"
-            f"## {active_num}.7 End-to-End Workflow & Execution\n\n"
+            f"### End-to-End Workflow & Execution\n\n"
             f"Execution begins at `{entry_str}`, loading runtime configurations and dispatching incoming requests or computational jobs "
             f"to internal domain services before persisting states and generating system responses.\n"
             f"{wf_mermaid}"
         )
 
     elif orig_num == 2:
-        # 2. Technology Stack
+        # Technology Stack
+        table = build_tech_stack_table(graph)
         ts_spec = diagram_specs.get("tech_stack")
         ts_mermaid = f"\n\n#### Figure {active_num}.1: Verified Technology Stack Architecture\n\n{render_mermaid(ts_spec)}\n" if ts_spec else ""
 
-        # Language table
-        lang_rows = ["| Language | Source Files | Role in Project | Purpose |", "|---|---|---|---|"]
-        for lang, count in graph.languages.items():
-            lang_rows.append(f"| {lang} | {count} files | Core implementation | Provides core source routines, algorithms, and application components. |")
-        lang_table = "\n".join(lang_rows)
-
-        # Framework table
-        if graph.frameworks:
-            fw_rows = ["| Framework | Role | Purpose |", "|---|---|---|"]
-            for fw in graph.frameworks:
-                fw_rows.append(f"| {fw} | Application Framework | Core architectural foundation, request dispatch, and component lifecycle. |")
-            fw_table = "\n".join(fw_rows)
-        else:
-            fw_table = "Standard language standard library / runtime frameworks without external framework dependencies."
-
-        db_type = getattr(graph, "database_type", None) or ("ORM / SQL Models" if graph.db_models else "Stateless / In-Memory (No dedicated relational engine)")
-        pm_str = ", ".join([f"`{p}`" for p in graph.package_managers]) or "Standard ecosystem packaging"
-        bt_str = ", ".join([f"`{b}`" for b in graph.build_tools]) or "Standard compilation & bundling tools"
-        sys_reqs = ", ".join(getattr(graph, "system_requirements", [])) or f"Standard runtime environment for {', '.join(graph.languages.keys())}"
+        langs_summary = ", ".join([f"**{k}** ({v} files)" for k, v in graph.languages.items()]) or "Identified programming languages"
+        fw_summary = ", ".join([f"**{fw}**" for fw in graph.frameworks]) or "Core application runtime frameworks"
+        pm_summary = ", ".join([f"`{pm}`" for pm in graph.package_managers]) or "Standard ecosystem packaging"
+        bt_summary = ", ".join([f"`{bt}`" for bt in graph.build_tools]) or "Standard compilation & bundling tools"
 
         return (
-            f"## {active_num}.1 Language Layer\n\n"
-            f"{lang_table}\n\n"
-            f"## {active_num}.2 Framework Layer\n\n"
-            f"{fw_table}\n\n"
-            f"## {active_num}.3 Persistence Layer\n\n"
-            f"- **Persistence Architecture:** {db_type}\n"
-            f"- **Entity Storage:** {'Registered ORM entity models detected.' if graph.db_models else 'Stateless execution; no persistent relational schema configured.'}\n\n"
-            f"## {active_num}.4 Dependency Management\n\n"
-            f"- **Package Manifests & Tooling:** {pm_str}\n"
-            f"- **Manifest Dependencies:** Static analysis cataloged {len(graph.manifest_dependencies)} declared dependencies across project manifests.\n\n"
-            f"## {active_num}.5 Build & Compilation\n\n"
-            f"- **Build Tooling:** {bt_str}\n"
-            f"- **Compilation Strategy:** Transpilation, bundling, and packaging executed via standard tooling configurations.\n\n"
-            f"## {active_num}.6 Runtime Requirements\n\n"
-            f"- **Execution Runtimes:** {sys_reqs}\n"
-            f"- **Operating Environment:** Platform-agnostic execution across Linux, macOS, and Windows environments.\n\n"
-            f"## {active_num}.7 Architectural Overview\n\n"
-            f"The diagram below visualises the relationships among the identified technology layers.\n"
+            f"### Technology Stack & Architecture Foundations\n\n"
+            f"The technological architecture of `{project_name}` is built upon verified software engineering foundations detected directly from package manifests, source code imports, and build configurations.\n\n"
+            f"- **Programming Languages:** {langs_summary}\n"
+            f"- **Frameworks & Core Libraries:** {fw_summary}\n"
+            f"- **Package Management:** {pm_summary}\n"
+            f"- **Build & Compilation Tooling:** {bt_summary}\n\n"
+            f"### Verified Technology Stack Matrix\n\n"
+            f"The table below details each technology layer, its specific role, purpose within `{project_name}`, and the concrete source evidence validating its inclusion:\n\n"
+            f"{table}\n"
             f"{ts_mermaid}\n\n"
-            f"## {active_num}.8 Summary\n\n"
-            f"The verified technology stack provides a modular, maintainable foundation for `{project_name}`, ensuring deterministic builds, clean architectural separation, and reliable runtime execution."
+            f"### Language Distribution & Execution Characteristics\n\n"
+            f"The codebase demonstrates a focused language strategy designed for {graph.app_type} workloads. "
+            f"Static code inspection identified {graph.total_files} active files across the repository. "
+            f"Core routines execute within their corresponding runtimes, enforcing modular structure and clean separation of concerns.\n\n"
+            f"### Third-Party Integrations & Ecosystem Alignment\n\n"
+            f"Dependencies and runtime bindings are declared in version-controlled manifests, ensuring deterministic builds, reproducible local development environments, and structured upstream packaging."
         )
 
     elif orig_num == 3:
-        # 3. Repository Structure
+        # Repository Structure (Written + Tree Flow Diagram per Requirement 3)
         ascii_tree = _build_repo_ascii_tree(graph, project_name)
         dirs_explanation = "\n".join([f"- **`{d.path}/`**: {d.purpose} ({d.file_count} files, key files: `{', '.join(d.key_files[:3])}`)" for d in graph.directory_structure[:12]])
         rs_spec = diagram_specs.get("repo_structure")
         rs_mermaid = f"\n\n#### Figure {active_num}.1: Repository Hierarchy & Module Structure\n\n{render_mermaid(rs_spec)}\n" if rs_spec else ""
         return (
-            f"## {active_num}.1 Overview\n\n"
-            f"The `{project_name}` repository is organized as a **{graph.app_type}** architecture. Source files and configuration assets are partitioned into modular directories to maintain high cohesion and separation of concerns across presentation, domain logic, utilities, and test suites.\n\n"
-            f"## {active_num}.2 Directory Hierarchy\n\n"
+            f"### Directory Hierarchy Tree\n\n"
             f"```text\n{ascii_tree}\n```\n\n"
-            f"## {active_num}.3 Module Organization and Responsibilities\n\n"
-            f"The repository is organized into the following modules, each with specific architectural responsibilities:\n\n"
+            f"### Module Organization & Responsibilities\n\n"
             f"{dirs_explanation}\n"
             f"{rs_mermaid}"
         )
 
     elif orig_num == 4:
-        # 4. System Architecture
+        # System Architecture (Large Multi-Tier Topology per Requirements 5 & 6)
         ascii_arch = _build_architecture_ascii_tree(graph)
         diag_spec = diagram_specs.get("architecture")
         arch_mermaid = f"\n\n#### Figure {active_num}.1: Multi-Tier System Topology & Architecture\n\n{render_mermaid(diag_spec)}\n" if diag_spec else ""
@@ -577,15 +545,15 @@ def build_deterministic_section_content(
         subsystems_list = ", ".join([f"`{d.path}/`" for d in graph.directory_structure[:6]]) or "modular subsystems"
 
         return (
-            f"## {active_num}.1 Overview\n\n"
-            f"The system architecture for `{project_name}` follows a **{graph.app_type}** topology. "
+            f"### Architectural Overview & Topology\n\n"
+            f"The architectural design of `{project_name}` adheres to a **{graph.app_type}** topology. "
             f"The codebase is structured to enforce modular decoupling, explicit request routing, and deterministic state transitions across its primary subsystems ({subsystems_list}).\n\n"
-            f"## {active_num}.2 Architectural Topology\n\n"
+            f"### Multi-Tier Structural Hierarchy\n\n"
             f"The system boundary spans presentation, business logic controllers, internal utilities, and storage layers:\n\n"
             f"```text\n{ascii_arch}\n```\n"
             f"{arch_mermaid}\n"
-            f"## {active_num}.3 Request Lifecycle & Data Flow\n\n"
-            f"Active entry points ({entry_list}) dispatch incoming operations to core modules and subsystem handlers:\n\n"
+            f"### Component Interactions & Request Lifecycle\n\n"
+            f"Execution begins at active entry points ({entry_list}). Incoming invocations traverse structured lifecycle phases:\n\n"
             f"1. **Invocation & Parameter Ingestion:** Entry routines receive execution arguments, environment variables, and client requests.\n"
             f"2. **Validation & Security Verification:** Parameters pass through boundary validation rules to ensure data integrity.\n"
             f"3. **Domain Processing:** Business logic modules coordinate routine execution across internal subsystems.\n"
@@ -596,75 +564,84 @@ def build_deterministic_section_content(
         )
 
     elif orig_num == 5:
-        # 5. Modules and Components
+        # Modules and Components
         table = build_modules_table(graph)
         mod_spec = diagram_specs.get("modules")
         mod_mermaid = f"\n\n#### Figure {active_num}.1: Subsystem & Module Relationships\n\n{render_mermaid(mod_spec)}\n" if mod_spec else ""
 
-        dir_subsections = []
-        top_dirs = graph.directory_structure[:5]
-        for idx, d in enumerate(top_dirs, start=2):
+        dir_details = []
+        for d in graph.directory_structure[:15]:
             kf = ", ".join([f"`{f}`" for f in d.key_files[:4]]) or "Internal module files"
             syms = ", ".join([f"`{s}`" for s in d.symbols[:4]]) if d.symbols else "Encapsulated routines"
-            clean_name = d.path.replace(".", "").replace("/", " ").replace("_", " ").strip().title() or "Core"
-            dir_subsections.append(
-                f"## {active_num}.{idx} {clean_name} Module\n\n"
+            dir_details.append(
+                f"#### `{d.path}/` Module\n\n"
                 f"- **Primary Responsibility:** {d.purpose}\n"
                 f"- **File Volume:** **{d.file_count}** source files\n"
                 f"- **Key Source Files:** {kf}\n"
                 f"- **Exported Symbols & Classes:** {syms}\n"
             )
-
-        if len(graph.directory_structure) > 5:
-            supporting_dirs = graph.directory_structure[5:15]
-            sup_idx = len(top_dirs) + 2
-            sup_lines = "\n".join([f"- **`{d.path}/`**: {d.purpose} ({d.file_count} files)" for d in supporting_dirs])
-            dir_subsections.append(
-                f"## {active_num}.{sup_idx} Supporting Modules\n\n"
-                f"The following additional modules support application operation:\n\n"
-                f"{sup_lines}\n"
-            )
-
-        dirs_expanded = "\n".join(dir_subsections) if dir_subsections else f"## {active_num}.2 Core Application Module\n\n- **Primary Responsibility:** Core execution routines."
+        dirs_expanded = "\n".join(dir_details)
 
         return (
-            f"## {active_num}.1 Module Overview\n\n"
+            f"### Subsystem Architecture & Decomposition\n\n"
             f"The codebase for `{project_name}` is decomposed into distinct logical subsystems designed for high cohesion and clear separation of concerns. "
             f"Static inspection identified **{len(graph.directory_structure)}** primary modules coordinating system execution.\n\n"
             f"### Subsystem Responsibility Catalog\n\n"
             f"{table}\n\n"
-            f"{mod_mermaid}\n\n"
+            f"### In-Depth Module Specifications\n\n"
             f"{dirs_expanded}\n"
+            f"{mod_mermaid}\n\n"
             f"### Inter-Module Communication & Dependency Flow\n\n"
             f"Modules interact through explicit programmatic imports and parameter passing. Upstream controllers invoke domain services, which delegate I/O, data transformation, and utility operations to specialized support modules without circular dependencies."
         )
 
     elif orig_num == 6:
-        # 6. Classes and Functions
-        classes_tbl = build_classes_table(graph)
-        funcs_tbl = build_functions_table(graph)
+        # Classes and Functions
+        table = build_classes_table(graph)
         cls_spec = diagram_specs.get("classes")
         cls_mermaid = f"\n\n#### Figure {active_num}.1: Significant AST Classes & Function Symbols\n\n{render_mermaid(cls_spec)}\n" if cls_spec else ""
 
+        top_classes = []
+        if graph.classes:
+            for c in graph.classes[:6]:
+                methods_str = ", ".join([f"`{m}()`" for m in c.methods[:5]]) if c.methods else "Data container / attributes"
+                fields_str = ", ".join([f"`{f}`" for f in getattr(c, "fields", [])[:5]]) if getattr(c, "fields", None) else "Instance properties"
+                top_classes.append(
+                    f"- **`{c.name}`** (defined in `{c.file_path}`):\n"
+                    f"  - *Role:* Core object abstraction and domain representation.\n"
+                    f"  - *Public Methods:* {methods_str}\n"
+                    f"  - *Attributes / Fields:* {fields_str}"
+                )
+        top_classes_str = "\n".join(top_classes) if top_classes else "No top-level class abstractions detected."
+
+        top_funcs = []
+        if graph.functions:
+            for f in graph.functions[:6]:
+                sig = f.signature or "()"
+                calls_str = ", ".join([f"`{c}()`" for c in getattr(f, "calls", [])[:4]]) if getattr(f, "calls", None) else "Standard routines"
+                top_funcs.append(
+                    f"- **`{f.name}{sig}`** (in `{f.file_path}`):\n"
+                    f"  - *Subroutines & Dependencies:* {calls_str}"
+                )
+        top_funcs_str = "\n".join(top_funcs) if top_funcs else "No standalone functional handlers detected."
+
         return (
-            f"## {active_num}.1 Overview\n\n"
+            f"### Object-Oriented & Functional Abstraction Model\n\n"
             f"Static AST analysis parsed source files in `{project_name}`, extracting classes, methods, signatures, and function invocations. "
             f"The codebase leverages structured abstractions to encapsulate domain state and operational logic.\n\n"
-            f"## {active_num}.2 Core Application Types\n\n"
-            f"The following table cataloges the primary object-oriented classes and data structures identified during AST parsing:\n\n"
-            f"{classes_tbl}\n\n"
-            f"## {active_num}.3 Handlers and Utility Functions\n\n"
-            f"The following table details standalone execution functions, handlers, and utility routines extracted from the codebase:\n\n"
-            f"{funcs_tbl}\n\n"
-            f"## {active_num}.4 Symbol Relationships\n\n"
-            f"Figure {active_num}.1 illustrates the significant AST classes and function symbols identified during analysis, highlighting the primary interactions and control delegations across abstractions.\n"
+            f"### AST Symbol Catalog\n\n"
+            f"{table}\n\n"
+            f"### Core Class Specifications\n\n"
+            f"{top_classes_str}\n\n"
+            f"### Functional Routines & Execution Handlers\n\n"
+            f"{top_funcs_str}\n"
             f"{cls_mermaid}\n\n"
-            f"### Control Flow & Symbol Coordination\n\n"
+            f"### Symbol Coordination & Control Flow\n\n"
             f"Execution control flows from top-level handler functions into domain class instances, which manage state transitions and delegate computation to specialized utility subroutines."
         )
 
     elif orig_num == 7:
-        # 7. APIs and Interfaces
+        # APIs and Interfaces (Written + Tree Diagram per Requirement 8)
         if graph.api_endpoints:
             table = build_apis_table(graph)
             api_tree_ascii = _build_api_ascii_tree(graph)
@@ -680,40 +657,40 @@ def build_deterministic_section_content(
             methods_summary = ", ".join([f"**{m}**: {c}" for m, c in sorted(methods_count.items())])
 
             return (
-                f"## {active_num}.1 Overview\n\n"
+                f"### API Interface Architecture & Route Catalog\n\n"
                 f"`{project_name}` exposes **{total_routes}** HTTP/REST endpoints discovered directly in controller routes and handler definitions. "
                 f"HTTP Method distribution: {methods_summary}.\n\n"
-                f"## {active_num}.2 API Interface Catalog\n\n"
+                f"### Route Definitions & Handler Mapping\n\n"
                 f"{table}\n\n"
-                f"## {active_num}.3 API Route Hierarchy\n\n"
+                f"### API Route Hierarchy\n\n"
                 f"```text\n{api_tree_ascii}\n```\n"
                 f"{api_tree_mermaid}\n"
-                f"## {active_num}.4 Request Flow Pipeline\n\n"
-                f"Incoming client requests traverse route matching, parameter validation, handler controllers, and underlying service layers:\n\n"
-                f"1. **Client / Frontend:** Client applications or consumers initiate HTTP/REST requests targeting registered endpoints.\n"
-                f"2. **Route Dispatcher:** The router matches incoming request paths and HTTP methods against registered route patterns.\n"
-                f"3. **Schema Validation:** Request payloads, path parameters, and query arguments are validated against data schemas.\n"
-                f"4. **Controller / Handler:** The request is routed to domain handler logic to execute business processes.\n"
-                f"5. **Service Layer & Persistence:** The handler invokes service layers, computing outputs and reading or persisting state.\n"
-                f"6. **Client Response:** The service layer formats the result into a JSON payload with appropriate HTTP status codes.\n\n"
-                f"{api_arch_mermaid}"
+                f"### Request Flow Pipeline\n\n"
+                f"Incoming client requests traverse route matching, parameter validation, handler controllers, and underlying service layers:\n"
+                f"{api_arch_mermaid}\n\n"
+                f"### Request Lifecycle & Middleware Processing\n\n"
+                f"1. **Request Ingestion:** HTTP requests arrive at the routing layer and are matched against route paths and methods.\n"
+                f"2. **Header & Authentication Verification:** Session tokens, authentication headers, or API keys are validated where applicable.\n"
+                f"3. **Payload & Parameter Parsing:** Query parameters and JSON bodies are deserialized and validated against schemas.\n"
+                f"4. **Business Handler Execution:** Control delegates to handler functions (`{', '.join([a.handler_name for a in graph.api_endpoints[:4]])}`).\n"
+                f"5. **Response Serialization:** Successful outcomes return standard HTTP status codes (`200 OK`, `201 Created`) with structured JSON payloads, while errors produce descriptive error responses."
             )
         else:
             entry_points_str = ", ".join([f"`{e}`" for e in graph.entry_points]) if graph.entry_points else "standard module entry points"
             return (
-                f"## {active_num}.1 Overview\n\n"
+                f"### API Interface Analysis & Route Catalog\n\n"
                 f"> **Inspection Finding:** Static route extraction scanned source files across web framework patterns (e.g. FastAPI, Flask, Express, Django). No public HTTP/REST route handlers, WebSocket listeners, or RPC endpoints were discovered in the codebase.\n\n"
-                f"## {active_num}.2 Interface Architecture & Invocation Contract\n\n"
+                f"### Interface Architecture & Invocation Contract\n\n"
                 f"Rather than exposing network-listening API endpoints, `{project_name}` is architected as a standalone software component invoked through direct entry points and programmatic interfaces:\n\n"
                 f"- **Primary Entry Point:** {entry_points_str}\n"
                 f"- **Communication Mechanism:** Direct process execution, programmatic Python/language imports, and module routine invocations.\n"
                 f"- **Input/Output Interface:** Command-line parameters, local configuration files, and direct function arguments returning structured output.\n\n"
-                f"## {active_num}.3 Interface Limitations & Recommendations\n\n"
+                f"### Interface Limitations & Recommendations\n\n"
                 f"Because this repository does not expose public HTTP endpoints, external services cannot consume it via RESTful HTTP protocols without embedding it as an imported library or introducing an API routing layer."
             )
 
     elif orig_num == 8:
-        # 8. Database and Data Model
+        # Database and Data Model (Tree + ER Diagram per Requirements 9 & 10)
         if graph.db_models:
             table = build_database_table(graph)
             db_tree_ascii = _build_db_ascii_tree(graph)
@@ -736,40 +713,40 @@ def build_deterministic_section_content(
             models_expanded = "\n".join(model_details)
 
             return (
-                f"## {active_num}.1 Overview\n\n"
+                f"### Data Architecture & Persistence Strategy\n\n"
                 f"`{project_name}` implements persistent data models to store and manage domain entities. "
                 f"Static analysis discovered **{len(graph.db_models)}** persistent database entities within the codebase.\n\n"
-                f"## {active_num}.2 Entity Specifications\n\n"
+                f"### Entity Blueprint & Specifications\n\n"
                 f"{table}\n\n"
-                f"## {active_num}.3 Database Entity Blueprint\n\n"
+                f"### Database Entity Blueprint\n\n"
                 f"```text\n{db_tree_ascii}\n```\n"
                 f"{db_tree_mermaid}\n"
                 f"{er_mermaid}\n\n"
                 f"### Detailed Entity Schema Definitions\n\n"
-                f"{models_expanded}\n\n"
+                f"{models_expanded}\n"
                 f"### Transaction Semantics & Data Integrity\n\n"
                 f"Database mutations execute within atomic transactions to guarantee consistency. Primary key constraints ensure entity identity, while relationship associations preserve relational integrity across domain updates."
             )
         else:
             return (
-                f"## {active_num}.1 Overview\n\n"
+                f"### Database and Persistence Architecture\n\n"
                 f"> **Inspection Finding:** Static AST analysis and repository scanning searched for database entities, schemas, and persistence layers. No relational database tables, ORM models (SQLAlchemy, Prisma, Django ORM, TypeORM), SQL migration scripts, or embedded SQLite databases were identified in the codebase.\n\n"
-                f"## {active_num}.2 Persistence & State Management Posture\n\n"
+                f"### Persistence & State Management Posture\n\n"
                 f"The repository operates with the following verified persistence posture:\n\n"
                 f"- **Stateless Execution:** `{project_name}` maintains no local persistent relational state. Compute routines execute ephemerally.\n"
                 f"- **In-Memory & File Storage:** Runtime state is retained strictly in volatile process memory, or serialized to local disk files when applicable.\n"
                 f"- **External Persistence Delegation:** If persistent data is required during execution, the application delegates state management to external services or client-supplied inputs.\n\n"
-                f"## {active_num}.3 Inspected Artifacts & Scope Disclosures\n\n"
+                f"### Inspected Artifacts & Scope Disclosures\n\n"
                 f"The absence of persistent database models was confirmed by inspecting package manifests, file trees, and configuration files for database connection strings and ORM imports. No database migrations, schemas, or seed files are present."
             )
 
     elif orig_num == 9:
-        # 9. Database Relationships
+        # Database Relationships
         if not graph.db_models:
             return (
-                f"## {active_num}.1 Overview\n\n"
+                f"### Database Relationships & Persistence Architecture\n\n"
                 f"> **Inspection Finding:** Static AST analysis and repository scanning searched for database entities and relationship declarations. No persistent database schema, relational foreign keys, or ORM associations were identified in the codebase.\n\n"
-                f"## {active_num}.2 Relational Database Schema Analysis\n\n"
+                f"### Persistence & State Coordination Posture\n\n"
                 f"Because no persistent relational database infrastructure is implemented in `{project_name}`, internal modules manage in-memory data structures programmatically without persistent relational constraints."
             )
 
@@ -782,9 +759,8 @@ def build_deterministic_section_content(
             rel_spec = diagram_specs.get("db_relationships")
             rel_mermaid = f"\n\n#### Figure {active_num}.1: Database Entity Cardinality & Relationships\n\n{render_mermaid(rel_spec)}\n" if rel_spec else ""
             return (
-                f"## {active_num}.1 Overview\n\n"
-                f"Relational associations across entities in `{project_name}` define data navigation pathways and foreign key boundaries.\n\n"
-                f"## {active_num}.2 Relational Database Schema Analysis\n\n"
+                f"### Entity Relationships & Cardinality Analysis\n\n"
+                f"Relational associations across entities in `{project_name}` define data navigation pathways and foreign key boundaries:\n\n"
                 f"{chr(10).join(rel_lines)}\n"
                 f"{rel_mermaid}\n\n"
                 f"### Join Traversal & Referential Integrity\n\n"
@@ -795,9 +771,9 @@ def build_deterministic_section_content(
             rel_spec = diagram_specs.get("db_relationships")
             rel_mermaid = f"\n\n#### Figure {active_num}.1: Database Entity Cardinality & Relationships\n\n{render_mermaid(rel_spec)}\n" if rel_spec else ""
             return (
-                f"## {active_num}.1 Overview\n\n"
+                f"### Database Relationships & Entity Cardinality\n\n"
                 f"Verified repository evidence confirms that no relational foreign keys or ORM associations are explicitly declared across the detected database models.\n\n"
-                f"## {active_num}.2 Relational Database Schema Analysis\n\n"
+                f"### Component-Level Data Relationships\n\n"
                 f"- **Data Flow Relationships:** Modules and handlers coordinate entity records programmatically without relational constraints.\n"
                 f"- **Schema Integrity:** Primary keys are managed at the entity level.\n"
                 f"{rel_mermaid}\n\n"
@@ -806,7 +782,7 @@ def build_deterministic_section_content(
             )
 
     elif orig_num == 10:
-        # 10. Dependencies
+        # Dependencies (5-Column Table + Tree per Requirement 11)
         table = build_dependencies_table(graph)
         dep_tree_ascii = _build_dependencies_ascii_tree(graph)
         dep_tree_spec = diagram_specs.get("dep_tree")
@@ -816,20 +792,16 @@ def build_deterministic_section_content(
 
         runtime_count = len([d for d in graph.manifest_dependencies if d.dep_type != "dev"])
         dev_count = len([d for d in graph.manifest_dependencies if d.dep_type == "dev"])
-        langs_summary = ", ".join(graph.languages.keys()) or "Standard runtime"
 
         return (
-            f"## {active_num}.1 Runtime Dependencies\n\n"
+            f"### Dependency Management Architecture & Ecosystem\n\n"
             f"`{project_name}` manages its software supply chain through structured package manifests. "
             f"Static inspection cataloged **{runtime_count}** runtime dependencies and **{dev_count}** development / build tooling dependencies.\n\n"
+            f"### Package Dependencies Matrix\n\n"
             f"{table}\n\n"
-            f"## {active_num}.2 System & Runtime Requirements\n\n"
-            f"- **Application Execution Engine:** Verified runtime for {langs_summary}\n"
-            f"- **Operating Environment:** Platform-agnostic execution across Linux, macOS, and Windows environments.\n\n"
-            f"## {active_num}.3 Dependency Hierarchy\n\n"
+            f"### Dependency Hierarchy & Resolution Tree\n\n"
             f"```text\n{dep_tree_ascii}\n```\n"
-            f"{dep_tree_mermaid}\n\n"
-            f"## {active_num}.4 Dependency Ecosystem\n\n"
+            f"{dep_tree_mermaid}\n"
             f"{dep_mermaid}\n\n"
             f"### Version Pinning & Supply Chain Security\n\n"
             f"1. **Version Pinning:** Manifests specify dependency versions or version ranges to ensure predictable builds.\n"
@@ -838,29 +810,28 @@ def build_deterministic_section_content(
         )
 
     elif orig_num == 11:
-        # 11. Configuration and Environment
+        # Configuration and Environment
         table = build_config_table(graph)
         cfg_spec = diagram_specs.get("config_flow")
         cfg_mermaid = f"\n\n#### Figure {active_num}.1: Runtime Configuration Ingestion Flow\n\n{render_mermaid(cfg_spec)}\n" if cfg_spec else ""
         return (
-            f"## {active_num}.1 Overview\n\n"
+            f"### Runtime Configuration Architecture\n\n"
             f"Application behavior and runtime environments for `{project_name}` are parameterized via environment variables, settings files, and configuration modules. "
             f"This decouples source code from environment-specific credentials and operational targets.\n\n"
-            f"## {active_num}.2 Environment Variables\n\n"
-            f"Variables identified in configuration manifests or runtime environment queries:\n\n"
-            f"{table}\n\n"
-            f"## {active_num}.3 Runtime Configuration Ingestion Flow\n\n"
-            f"1. **Environment Ingestion:** At launch, configuration loaders ingest environment variables from the host operating system or local configuration files.\n"
+            f"### Environment & Runtime Configuration Matrix\n\n"
+            f"Variables identified in `.env` files or runtime environment queries:\n\n"
+            f"{table}\n"
+            f"{cfg_mermaid}\n\n"
+            f"### Operational Configuration Ingestion Flow\n\n"
+            f"1. **Environment Ingestion:** At launch, configuration loaders ingest environment variables from the host operating system or local `.env` files.\n"
             f"2. **Type Casting & Defaults:** Raw strings are cast to typed configurations, applying sensible fallback defaults for non-critical settings.\n"
             f"3. **Fail-Fast Validation:** Missing critical variables halt application boot immediately to prevent unpredictable runtime states.\n"
             f"4. **Module Distribution:** Sanitized configuration settings are injected into domain handlers and persistence adapters.\n\n"
-            f"{cfg_mermaid}\n\n"
-            f"## {active_num}.4 Secret Protection Notice\n\n"
             f"> **Secret Protection Notice:** All sensitive tokens, passwords, and private keys are strictly redacted in this documentation."
         )
 
     elif orig_num == 12:
-        # 12. Testing
+        # Testing
         test_info = graph.testing
         if test_info.test_files_count > 0 or test_info.test_frameworks:
             cmd_str = ", ".join([f"`{c}`" for c in test_info.test_commands]) or "Native test runner"
@@ -869,50 +840,42 @@ def build_deterministic_section_content(
             t_spec = diagram_specs.get("testing_pipeline")
             t_mermaid = f"\n\n#### Figure {active_num}.1: Automated Test Execution Pipeline\n\n{render_mermaid(t_spec)}\n" if t_spec else ""
             return (
-                f"## {active_num}.1 Overview\n\n"
-                f"The `{project_name}` project incorporates an automated testing suite designed to validate code functionality through unit and "
-                f"integration assertions. The suite is organized across discovered test fixtures to verify system behavior.\n\n"
-                f"## {active_num}.2 Execution Status\n\n"
-                f"> **Execution Notice:** Tests detected; runtime execution was not performed during static repository analysis. Runtime pass/fail metrics and test coverage remain unmeasured.\n\n"
-                f"## {active_num}.3 Test Framework and Command\n\n"
-                f"- **Test Framework:** {fw_str}\n"
-                f"- **Execution Command:** {cmd_str}\n\n"
-                f"## {active_num}.4 Test Inventory\n\n"
-                f"A total of **{test_info.test_files_count}** test files are identified within the suite. The following test fixtures were discovered during repository analysis:\n\n"
-                f"{files_list}\n\n"
-                f"## {active_num}.5 Automated Test Execution Pipeline\n\n"
+                f"### Test Engineering Architecture & Quality Strategy\n\n"
+                f"`{project_name}` incorporates automated test suites to ensure software reliability, functional correctness, and regression safety. "
+                f"Static inspection detected **{test_info.test_files_count}** test files leveraging **{fw_str}**.\n\n"
+                f"### Test Suite Inventory & Specifications\n\n"
+                f"- **Test Frameworks:** {fw_str}\n"
+                f"- **Test Files Identified:** {test_info.test_files_count}\n"
+                f"- **Primary Test Execution Commands:** {cmd_str}\n\n"
+                f"### Identified Test Files\n\n"
+                f"{files_list}\n"
                 f"{t_mermaid}\n\n"
-                f"## {active_num}.6 Test Pipeline Walkthrough\n\n"
+                f"### Test Pipeline & Execution Walkthrough\n\n"
                 f"Automated test procedures execute unit and integration assertions across discovered test fixtures to validate code functionality:\n\n"
                 f"1. **Test Discovery:** The test runner scans test directories for files matching test patterns.\n"
                 f"2. **Fixture Initialization:** Test fixtures prepare isolated execution contexts, mocking external services where appropriate.\n"
                 f"3. **Assertion Verification:** Tests exercise domain routines, asserting expected return values, exceptions, and side effects.\n"
-                f"4. **Reporting & Feedback:** Test runners output execution summaries, exit codes, and coverage metrics for developer feedback and CI gates."
+                f"4. **Reporting & Feedback:** Test runners output execution summaries, exit codes, and coverage metrics for developer feedback and CI gates.\n\n"
+                f"> **Execution Notice:** Tests detected; runtime execution was not performed during static repository analysis. Runtime pass/fail metrics and test coverage remain unmeasured."
             )
         else:
             languages_str = ", ".join(graph.languages.keys()) or "detected languages"
             return (
-                f"## {active_num}.1 Overview\n\n"
+                f"### Test Suite Specifications & Verification Posture\n\n"
                 f"> **Inspection Finding:** Static repository analysis scanned file paths, directories, and package configurations for automated test suites (e.g., `test_*.py`, `*_test.py`, `tests/`, `__tests__/`, `spec/`, Jest, pytest, unittest). No automated test files or test runner configurations were identified in this repository.\n\n"
-                f"## {active_num}.2 Execution Status\n\n"
-                f"> **Execution Notice:** Automated test execution is currently unconfigured. Zero unit or integration test assertions are present in the repository.\n\n"
-                f"## {active_num}.3 Test Framework and Command\n\n"
+                f"### Current Verification Status & Quality Risks\n\n"
                 f"- **Automated Coverage:** 0% verified automated test coverage.\n"
                 f"- **Regression Risk:** Without automated unit and integration tests, code refactoring and modifications carry a risk of undetected regressions.\n"
                 f"- **Manual Verification:** Verification relies entirely on ad-hoc manual execution by developers.\n\n"
-                f"## {active_num}.4 Test Inventory\n\n"
-                f"No automated test files or test fixtures are currently cataloged.\n\n"
-                f"## {active_num}.5 Automated Test Execution Pipeline\n\n"
+                f"### Recommended Testing Strategy\n\n"
                 f"To establish regression safety for `{project_name}`, introducing an automated testing suite is recommended:\n\n"
                 f"1. **Framework:** Adopt standard testing tooling appropriate for {languages_str} (e.g. `pytest` for Python or `vitest`/`jest` for TypeScript/JavaScript).\n"
                 f"2. **Test Directory:** Create a dedicated `tests/` directory with fixtures covering primary entry points (`{', '.join(graph.entry_points) or 'main'}`).\n"
-                f"3. **CI Integration:** Integrate test execution into an automated CI pipeline triggered on pull requests.\n\n"
-                f"## {active_num}.6 Test Pipeline Walkthrough\n\n"
-                f"Once implemented, the pipeline should execute test discovery, fixture initialization, assertion verification, and reporting on every commit."
+                f"3. **CI Integration:** Integrate test execution into an automated CI pipeline triggered on pull requests."
             )
 
     elif orig_num == 13:
-        # 13. Security
+        # Security
         sec = graph.security
         sec_table = build_security_table(graph)
         auth_str = ", ".join(sec.auth_mechanisms) if sec.auth_mechanisms else "Standard authorization controls"
@@ -921,31 +884,24 @@ def build_deterministic_section_content(
         sec_spec = diagram_specs.get("security_arch")
         sec_mermaid = f"\n\n#### Figure {active_num}.1: Security Architecture & Access Control Flow\n\n{render_mermaid(sec_spec)}\n" if sec_spec else ""
         return (
-            f"## {active_num}.1 Overview\n\n"
+            f"### Security Architecture & Defense-in-Depth Posture\n\n"
             f"The security posture of `{project_name}` is designed to protect repository operations, runtime data, and execution boundaries. "
             f"Security controls enforce access boundaries, input validation, and secret protection.\n\n"
-            f"## {active_num}.2 Authentication & Token Management\n\n"
             f"- **Authentication Mechanisms:** {auth_str}\n"
             f"- **Security Policies & Protections:** {pat_str}\n"
             f"- **Identified Security Symbols:** {sym_str}\n\n"
-            f"## {active_num}.3 Security Posture Assessment\n\n"
-            f"{sec_table}\n\n"
-            f"## {active_num}.4 Security Architecture & Access Control Flow\n\n"
+            f"### Verified Security Status Evaluation\n\n"
+            f"{sec_table}\n"
             f"{sec_mermaid}\n\n"
-            f"## {active_num}.5 Access Control & Protection Walkthrough\n\n"
-            f"1. **Request Ingress:** Client requests carrying credentials or parameters enter the system boundary.\n"
-            f"2. **Input Validation & Sanitization:** Incoming inputs, API payloads, and parameters are validated to prevent injection attacks and unexpected errors.\n"
-            f"3. **Security Guard & Access Control:** Requests reaching sensitive interfaces are evaluated against active tokens or credentials.\n"
-            f"4. **Secret Isolation:** Configuration variables, API keys, and connection credentials are shielded from log leaks and documentation outputs.\n"
-            f"5. **Resource Access:** Upon successful verification, access is granted to internal domain routines under least-privilege boundaries.\n\n"
-            f"## {active_num}.6 Security Recommendations\n\n"
-            f"- Regular vulnerability scanning of third-party package dependencies.\n"
-            f"- Enforce HTTPS and secure transport layers for all network communications.\n"
-            f"- Maintain strict secret segregation using environment configuration rather than hardcoded credentials."
+            f"### Access Control & Protection Walkthrough\n\n"
+            f"1. **Input Validation:** Incoming inputs, API payloads, and parameters are sanitized to prevent injection attacks and unexpected errors.\n"
+            f"2. **Boundary Authentication:** Requests reaching sensitive interfaces are validated against active tokens or credentials.\n"
+            f"3. **Secret Redaction:** Configuration variables, API keys, and connection credentials are shielded from log leaks and documentation outputs.\n"
+            f"4. **Least Privilege Execution:** Modules execute within restricted process privileges, limiting access to filesystem and host resources."
         )
 
     elif orig_num == 14:
-        # 14. CI/CD Pipeline
+        # CI/CD Pipeline
         ci_files = graph.devops.ci_files
         if ci_files:
             diag_spec = diagram_specs.get("cicd_pipeline")
@@ -953,67 +909,40 @@ def build_deterministic_section_content(
             ci_files_str = ", ".join([f"`{f}`" for f in ci_files])
             stages_str = ", ".join([f"`{s}`" for s in graph.devops.ci_stages]) or "Automated Build & Test"
             return (
-                f"## {active_num}.1 Current State Assessment\n\n"
+                f"### Continuous Integration & Deployment Architecture\n\n"
                 f"`{project_name}` implements automated CI/CD workflows to validate code contributions, enforce quality standards, and deliver reliable release packages. "
                 f"Repository inspection identified **{len(ci_files)}** active workflow definition files.\n\n"
+                f"### CI/CD Workflow Inventory\n\n"
                 f"- **Workflow Definition Files:** {ci_files_str}\n"
-                f"- **Configured Pipeline Stages:** {stages_str}\n\n"
-                f"## {active_num}.2 Operational Procedure\n\n"
-                f"Continuous integration workflows execute automatically on defined repository triggers (e.g., push, pull_request) within managed virtual runner environments.\n\n"
-                f"## {active_num}.3 Identified Automation Gaps\n\n"
-                f"| Stage | Status | Description |\n"
-                f"|---|---|---|\n"
-                f"| Dependency Resolution | Configured | Automated resolution and caching of project packages |\n"
-                f"| Automated Testing | Configured | Automated test suite execution across target runners |\n"
-                f"| Automated Deployment | Monitored | Release publishing or deployment based on branch targets |\n\n"
-                f"## {active_num}.4 Recommendations\n\n"
-                f"### 14.4.1 Pipeline Definition\n\n"
+                f"- **Configured Pipeline Stages:** {stages_str}\n"
                 f"{mermaid_block}\n\n"
-                f"### 14.4.2 Future Automation Objectives\n\n"
-                f"1. **Dependency Installation:** Automated resolution and installation of project dependencies.\n"
-                f"2. **Linting:** Automated enforcement of code style and formatting rules.\n"
-                f"3. **Verification:** Automated execution of verification checks prior to artifact generation.\n\n"
-                f"## {active_num}.5 Summary\n\n"
-                f"The CI/CD pipeline enforces automated quality gates, ensuring reproducible builds and stable deployments."
+                f"### Stage-by-Stage Pipeline Walkthrough\n\n"
+                f"When events (such as code pushes or pull requests) trigger the pipeline, execution traverses automated stages:\n\n"
+                f"1. **Checkout & Environment Setup:** The runner checks out repository code and prepares language runtime environments.\n"
+                f"2. **Dependency Resolution & Caching:** Package dependencies are resolved and cached to minimize build latency.\n"
+                f"3. **Linting & Code Quality:** Code style, formatting, and static typing are verified.\n"
+                f"4. **Automated Test Execution:** Test suites execute across defined environments to catch regressions.\n"
+                f"5. **Build & Artifact Packaging:** Production bundles, binaries, or container images are compiled and verified.\n"
+                f"6. **Deployment & Release:** Verified artifacts are published or deployed to target environments based on branch rules.\n\n"
+                f"### CI/CD Security & Environment Secrets\n\n"
+                f"Workflows execute within isolated runner environments. Sensitive credentials (such as deployment keys and registry tokens) are injected securely via repository secrets, preventing accidental exposure in logs."
             )
         else:
             return (
-                f"## {active_num}.1 Current State Assessment\n\n"
-                f"A static inspection of the `{project_name}` repository was performed to identify existing continuous integration and continuous deployment (CI/CD) configurations. Standard configuration locations were reviewed, including:\n\n"
-                f"- `.github/workflows/`\n"
-                f"- `.gitlab-ci.yml`\n"
-                f"- `Jenkinsfile`\n"
-                f"- `bitbucket-pipelines.yml`\n"
-                f"- `azure-pipelines.yml`\n\n"
-                f"> **Inspection Finding:** No automated CI/CD pipeline definitions were discovered in the codebase. The repository currently lacks any formalized build, test, or deployment automation.\n\n"
-                f"## {active_num}.2 Operational Procedure\n\n"
-                f"In the absence of automated pipelines, the following operational procedures are currently executed manually by operators:\n\n"
-                f"- **Code Verification:** Syntax and style checks are performed manually.\n"
-                f"- **Packaging:** Build artifacts are produced manually.\n"
-                f"- **Deployment:** Releases are pushed and deployed manually.\n\n"
-                f"This manual workflow introduces dependency on operator availability and increases the risk of human error during the release cycle.\n\n"
-                f"## {active_num}.3 Identified Automation Gaps\n\n"
+                f"### CI/CD Pipeline & Build Automation\n\n"
+                f"> **Inspection Finding:** Static inspection checked repository files for continuous integration and continuous deployment configurations (such as `.github/workflows/`, `.gitlab-ci.yml`, `Jenkinsfile`, `bitbucket-pipelines.yml`, or `azure-pipelines.yml`). No automated CI/CD pipeline definitions were discovered in the codebase.\n\n"
+                f"### Missing Automated Pipeline Stages\n\n"
                 f"The following standard automation stages are currently unconfigured in this repository:\n\n"
-                f"| Stage | Status | Description |\n"
-                f"|---|---|---|\n"
-                f"| Automated Linting & Formatting | Unconfigured | Code style and formatting rules are not automatically enforced |\n"
-                f"| Automated Test Execution | Unconfigured | Test suites are not triggered automatically on push or pull request |\n"
-                f"| Security & Vulnerability Auditing | Unconfigured | Dependency vulnerability scans and secret checks are not automated |\n"
-                f"| Automated Deployment & Release | Unconfigured | Build packaging and deployment release cycles must be performed manually |\n\n"
-                f"## {active_num}.4 Recommendations\n\n"
-                f"### 14.4.1 Pipeline Definition\n\n"
-                f"It is recommended to introduce a standard CI pipeline (e.g. `.github/workflows/ci.yml`) defining sequential validation stages:\n\n"
-                f"1. **Dependency Installation:** Automated resolution and installation of project dependencies.\n"
-                f"2. **Linting:** Automated enforcement of code style and formatting rules.\n"
-                f"3. **Verification:** Automated execution of verification checks prior to artifact generation.\n\n"
-                f"### 14.4.2 Future Automation Objectives\n\n"
-                f"Configure automated triggers for pull requests and main branch merges to ensure zero-regression delivery.\n\n"
-                f"## {active_num}.5 Summary\n\n"
-                f"Establishing an automated CI/CD pipeline will eliminate manual verification bottlenecks and ensure deterministic quality gates across the delivery lifecycle."
+                f"- **Automated Linting & Formatting:** Code style and syntax checks are not automatically enforced on commit or pull request.\n"
+                f"- **Automated Test Execution:** Test suites are not triggered automatically on code push.\n"
+                f"- **Security & Dependency Auditing:** No automated vulnerability scanning or secret leak detection is configured.\n"
+                f"- **Automated Deployment & Release:** Build artifacts and deployments must be produced and pushed manually.\n\n"
+                f"### Manual Delivery Procedures & Recommendations\n\n"
+                f"Currently, code verification, packaging, and deployments are executed manually by operators. It is recommended to create a `.github/workflows/ci.yml` pipeline to automate dependency installation, linting, and verification."
             )
 
     elif orig_num == 15:
-        # 15. Deployment Architecture
+        # Deployment Architecture
         devops = graph.devops
         if devops.docker_files or devops.deployment_configs:
             docker_str = ", ".join([f"`{d}`" for d in devops.docker_files]) if devops.docker_files else "None identified"
@@ -1023,42 +952,37 @@ def build_deterministic_section_content(
             dep_spec = diagram_specs.get("deployment_arch")
             dep_mermaid = f"\n\n#### Figure {active_num}.1: Container & Infrastructure Deployment Topology\n\n{render_mermaid(dep_spec)}\n" if dep_spec else ""
             return (
-                f"## {active_num}.1 Inspection Findings\n\n"
+                f"### Deployment & Containerization Architecture\n\n"
                 f"`{project_name}` implements containerization and infrastructure definitions to provide reproducible, isolated deployment environments across development, staging, and production hosting.\n\n"
+                f"### Infrastructure Specifications\n\n"
                 f"- **Container Manifests:** {docker_str}\n"
                 f"- **Base Images:** {images_str}\n"
                 f"- **Exposed Network Ports:** {ports_str}\n"
-                f"- **Services / Compose Topology:** {services_str}\n\n"
-                f"## {active_num}.2 Host Execution Model\n\n"
-                f"Services execute inside isolated container runtimes, ensuring immutable execution environments, repeatable configuration, and minimal host dependency footprint.\n\n"
-                f"## {active_num}.3 Network Binding\n\n"
-                f"Applications bind to configured network ports ({ports_str}) for internal service communication or external ingress proxying.\n\n"
+                f"- **Services / Compose Topology:** {services_str}\n"
                 f"{dep_mermaid}\n\n"
-                f"## {active_num}.4 Containerization Recommendations\n\n"
-                f"1. Multi-stage container builds to minimize production image attack surface and size.\n"
-                f"2. Enforce non-root user execution inside container runtimes.\n"
-                f"3. Externalize secrets and configuration parameters via environment runtime injection."
+                f"### Deployment Topology & Service Orchestration\n\n"
+                f"1. **Image Construction:** Manifests define multi-stage build layers, caching dependencies to create minimal, hardened container images.\n"
+                f"2. **Networking & Ports:** Applications bind to configured network ports ({ports_str}) for internal service communication or external ingress.\n"
+                f"3. **Volume Mounts & Storage:** Persistent storage and local configuration directories are bound into containers where required.\n"
+                f"4. **Environment Injection:** Runtime configuration parameters are passed during container instantiation.\n"
+                f"5. **Process Lifecycle:** Process managers monitor service health, automatically restarting stopped or failed containers to ensure high availability."
             )
         else:
             languages_str = ", ".join(graph.languages.keys()) or "detected runtime"
             return (
-                f"## {active_num}.1 Inspection Findings\n\n"
+                f"### Deployment Architecture & Runtime Topology\n\n"
                 f"> **Inspection Finding:** Static analysis inspected the repository for containerization manifests (`Dockerfile`, `docker-compose.yml`, `Containerfile`), Kubernetes specifications, Helm charts, and cloud infrastructure declarations (Terraform, CloudFormation). No containerization or cloud deployment configurations were detected.\n\n"
-                f"## {active_num}.2 Host Execution Model\n\n"
+                f"### Host Execution Runtime Assumptions\n\n"
                 f"In the absence of containerized or cloud deployment manifests, `{project_name}` is designed for direct host execution:\n\n"
                 f"- **Runtime Environment:** Executes directly within a host operating system environment equipped with a standard runtime for {languages_str}.\n"
-                f"- **Process Model:** Single-process execution launched via standard language interpreters or system binaries.\n\n"
-                f"## {active_num}.3 Network Binding\n\n"
                 f"- **Network Binding:** Standalone execution without container port-forwarding or reverse proxy orchestration.\n"
-                f"- **Port Allocation:** Binds directly to host network interfaces or runs as a command-line / headless application without network listeners.\n\n"
-                f"## {active_num}.4 Containerization Recommendations\n\n"
-                f"For reproducible deployments across staging and production environments, creating a `Dockerfile` and a `docker-compose.yml` service definition is recommended:\n\n"
-                f"1. **Dockerfile:** Defines the image build instructions and runtime environment for the application.\n"
-                f"2. **docker-compose.yml:** Orchestrates application dependencies, persistent volumes, and port forwardings for local and staging deployments."
+                f"- **Process Model:** Single-process execution launched via standard language interpreters or system binaries.\n\n"
+                f"### Containerization Recommendations\n\n"
+                f"For reproducible deployments across staging and production environments, creating a `Dockerfile` and a `docker-compose.yml` service definition is recommended to isolate runtime dependencies and enforce consistent runtime environments."
             )
 
     elif orig_num == 16:
-        # 16. Setup and Developer Guide
+        # Setup and Developer Guide
         setup_cmds = getattr(graph, "setup_commands", [])
         if setup_cmds:
             cmd_lines = "\n".join([f"{i+1}. Run `{c}`" for i, c in enumerate(setup_cmds)])
@@ -1070,23 +994,25 @@ def build_deterministic_section_content(
         setup_spec = diagram_specs.get("setup_flowchart")
         setup_mermaid = f"\n\n#### Figure {active_num}.1: Developer Onboarding & Local Setup Flowchart\n\n{render_mermaid(setup_spec)}\n" if setup_spec else ""
         return (
-            f"## {active_num}.1 Prerequisites\n\n"
+            f"### Developer Onboarding & Local Environment Architecture\n\n"
+            f"This guide provides comprehensive, step-by-step instructions to set up, build, and run `{project_name}` in a local development environment.\n\n"
+            f"### 1. Prerequisites\n\n"
             f"- **Runtime Environment:** Verified runtime for {langs_str}\n"
             f"- **Package Manager:** {pm_str}\n"
             f"- **Version Control:** Git installed and configured\n\n"
-            f"## {active_num}.2 Installation and Build\n\n"
+            f"### 2. Installation & Workspace Initialization\n\n"
             f"Execute the following steps to initialize the environment and install dependencies:\n\n"
             f"{cmd_lines}\n\n"
-            f"## {active_num}.3 Execution\n\n"
+            f"### 3. Application Execution\n\n"
             f"- **Primary Entry Point:** `{entry_point}`\n"
             f"- Execute entry script or application command according to project package definitions.\n\n"
             f"{setup_mermaid}\n\n"
-            f"## {active_num}.4 Onboarding Workflow\n\n"
-            f"1. **Environment Preparation:** Configuring the local runtime and verifying package manager availability.\n"
-            f"2. **Dependency Resolution:** Installing all required packages via {pm_str}.\n"
-            f"3. **Build Validation:** Running the development server and build scripts to ensure code integrity.\n"
-            f"4. **Service Initialization:** Executing the application entry point to start the service.\n\n"
-            f"### Troubleshooting & Common Issues\n\n"
+            f"### 4. Verification & Testing Workflow\n\n"
+            f"After completing installation, verify local environment health:\n\n"
+            f"- Ensure all required environment variables are set in `.env`.\n"
+            f"- Run the test suite if configured to confirm functional baseline.\n"
+            f"- Check that the primary process initializes and binds to expected endpoints or executes successfully without unhandled errors.\n\n"
+            f"### 5. Troubleshooting & Common Issues\n\n"
             f"- **Missing Dependencies:** Ensure package manager ({pm_str}) has completed installation successfully.\n"
             f"- **Environment Variable Errors:** Check for required variables and ensure no sensitive secrets are missing or malformed.\n"
             f"- **Port Conflicts:** If running network services, ensure configured ports are not already bound by another process."
@@ -1133,7 +1059,7 @@ def _synthesize_section_with_ai(
         f"- Generate an exhaustive, deeply informative, page-length document (at least 600-1400 words).\n"
         f"- Provide thorough architectural explanations, component breakdowns, operational considerations, and technical analysis.\n"
         f"- Retain and include ALL tables, ASCII trees, and Mermaid diagrams from the verified evidence above without omitting or truncating them.\n"
-        f"- Structure the content with exact numbered subheadings (## {active_num}.1, ## {active_num}.2, etc.).\n"
+        f"- Structure the content with clear subheadings (### and ####).\n"
         f"- Stay strictly grounded in '{project_name}' and the evidence provided."
     )
 
@@ -1213,6 +1139,7 @@ def generate_full_project_documentation(
     resume: bool = True,
     run_id: Optional[str] = None,
     force_all_16: Optional[bool] = None,
+    progress_callback: Optional[Any] = None,
 ) -> FullDocSuiteResult:
     """
     Generates the technical documentation suite strictly grounded in current repository snapshot.
@@ -1254,8 +1181,8 @@ def generate_full_project_documentation(
                     pass
 
     current_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    analysis_version = "v1.6"
-    doc_version = "v1.6"
+    analysis_version = "v2.0"
+    doc_version = "v2.0"
     active_run_id = run_id or f"run_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
     project_meta = graph.project_metadata or ProjectMetadata(
@@ -1389,6 +1316,12 @@ def generate_full_project_documentation(
         title = plan_item["title"]
         schema_key = plan_item["schema_key"]
         canonical_filename = plan_item["filename"]
+
+        if progress_callback:
+            try:
+                progress_callback(disp_num, len(active_plan), title)
+            except Exception:
+                pass
 
         logger.info("Evaluating Section %d/%d (Canonical %d): %s (%s)", disp_num, len(active_plan), orig_id, title, canonical_filename)
         out_file = docs_root / canonical_filename

@@ -56,9 +56,8 @@ export function sanitizeMermaidChart(rawChart: string, isChat: boolean = false):
     cleaned = cleaned.slice(0, trailingMarkdownMatch.index).trim();
   }
 
-  // 5. Check if it contains sequence diagram syntax
+  // Sequence diagram check
   const hasSequenceSyntax = cleaned.includes("participant ") || cleaned.includes("->>") || cleaned.includes("activate ");
-
   if (hasSequenceSyntax) {
     if (/^(graph|flowchart)\s+[A-Za-z]+/i.test(cleaned)) {
       cleaned = "sequenceDiagram\n" + cleaned.replace(/^(graph|flowchart)\s+[A-Za-z]+\s*\n?/i, "");
@@ -66,8 +65,8 @@ export function sanitizeMermaidChart(rawChart: string, isChat: boolean = false):
     return cleaned;
   }
 
-  if (isChat) {
-    // Chat-specific architecture blueprint normalization
+  // Universal flowchart and architecture blueprint normalization (applies to Docs, Editor, and Chat)
+  if (/^(graph|flowchart)\s+[A-Za-z]+/i.test(cleaned) || isChat) {
     const lines = cleaned.split("\n");
     const processed: string[] = [];
     let subgraphCount = 0;
@@ -89,39 +88,50 @@ export function sanitizeMermaidChart(rawChart: string, isChat: boolean = false):
       // Replace sequence arrows ->> with -->
       l = l.replace(/->>/g, "-->");
 
+      // Sanitize unicode bullets inside line
+      l = l.replace(/•/g, "-");
+
       // Normalize escaped and literal newlines in node labels to <br/> and quote unquoted labels
       // 1. Cylinder: ID[(...)]
       l = l.replace(/(\b[A-Za-z0-9_]+)\[\(\s*(.*?)\s*\)\]/g, (_, id, content) => {
         let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
-        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'");
+        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")");
         return `${id}[("${clean}")]`;
       });
 
       // 2. Stadium: ID([ ... ])
       l = l.replace(/(\b[A-Za-z0-9_]+)\(\[\s*(.*?)\s*\]\)/g, (_, id, content) => {
         let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
-        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'");
+        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")");
         return `${id}(["${clean}"])`;
       });
 
       // 3. Circle: ID(( ... ))
       l = l.replace(/(\b[A-Za-z0-9_]+)\(\(\s*(.*?)\s*\)\)/g, (_, id, content) => {
         let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
-        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'");
+        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")");
         return `${id}(("${clean}"))`;
       });
 
-      // 4. Square: ID[ ... ] (ensure not part of [("...")])
-      l = l.replace(/(\b[A-Za-z0-9_]+)\[(?!\()\s*(.*?)\s*\](?!\))/g, (_, id, content) => {
-        let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
-        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'");
-        return `${id}["${clean}"]`;
-      });
+      // 4. Square: ID["..."] with inner brackets or quotes, or unquoted ID[...]
+      if (/^\s*[A-Za-z0-9_]+\[".*?"\]\s*(?:$|-->|---|==>)/.test(l)) {
+        l = l.replace(/(\b[A-Za-z0-9_]+\[")([\s\S]*?)("\])/g, (_, pre, content, post) => {
+          let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
+          clean = clean.replace(/\[/g, "(").replace(/\]/g, ")").replace(/"/g, "'");
+          return `${pre}${clean}${post}`;
+        });
+      } else {
+        l = l.replace(/(\b[A-Za-z0-9_]+)\[(?!\()\s*([^\]]*?)\s*\](?!\))/g, (_, id, content) => {
+          let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
+          clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")");
+          return `${id}["${clean}"]`;
+        });
+      }
 
       // 5. Rhombus / Decision: ID{ ... }
       l = l.replace(/(\b[A-Za-z0-9_]+)\{\s*(.*?)\s*\}/g, (_, id, content) => {
         let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
-        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'");
+        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")");
         return `${id}{"${clean}"}`;
       });
 
@@ -134,22 +144,42 @@ export function sanitizeMermaidChart(rawChart: string, isChat: boolean = false):
       endCount++;
     }
 
-    return processed.join("\n").trim();
-  }
-
-  // Shared default for other surfaces
-  if (/^(graph|flowchart)\s+[A-Za-z]+/i.test(cleaned)) {
-    cleaned = cleaned.replace(/->>/g, "-->");
-    cleaned = cleaned.replace(/\[(?!\()([^"\]\n]*?\([^\]\n]*?\)[^"\]\n]*?)(?<!\))\]/g, '["$1"]');
+    cleaned = processed.join("\n").trim();
   }
 
   return cleaned;
+}
+
+export function repairMermaidSyntax(chart: string): string {
+  let repaired = chart.trim();
+  // Strip any raw HTML tags except <br/> (e.g. <small>...</small>, <span>, etc.)
+  repaired = repaired.replace(/<\/?(?:small|span|div|b|i|font|p|em|strong|h\d)[^>]*>/gi, "");
+  repaired = repaired.replace(/<br\s*\/?>/gi, "<br/>");
+
+  const lines = repaired.split("\n");
+  const processed: string[] = [];
+  for (const line of lines) {
+    let l = line.trim();
+    if (!l) {
+      processed.push("");
+      continue;
+    }
+    // Clean inner unescaped quotes, bullets, and brackets in node labels
+    l = l.replace(/(\b[A-Za-z0-9_]+)\["(.*?)"\]/g, (_, id, content) => {
+      const clean = content.replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")").replace(/•/g, "-");
+      return `${id}["${clean}"]`;
+    });
+    l = l.replace(/->>/g, "-->");
+    processed.push(l);
+  }
+  return processed.join("\n").trim();
 }
 
 export default function MermaidDiagram({ chart, title, figureCaption, isChat = false }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [svgContent, setSvgContent] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [cleanedDiagram, setCleanedDiagram] = useState<string>("");
   const [zoom, setZoom] = useState<number>(1.0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
@@ -161,9 +191,14 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
     if (!sanitized) {
       if (isMounted) {
         setSvgContent("");
+        setCleanedDiagram("");
         setError(chart && chart.trim() ? "NO_DIAGRAM_SYNTAX" : "EMPTY_DIAGRAM");
       }
       return;
+    }
+
+    if (isMounted) {
+      setCleanedDiagram(sanitized);
     }
 
     const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
@@ -176,10 +211,29 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
           setError(null);
         }
       })
-      .catch((err) => {
-        if (isMounted) {
-          console.warn("Mermaid render error:", err);
-          setError(err?.message || "Failed to render diagram");
+      .catch((primaryErr) => {
+        const repaired = repairMermaidSyntax(sanitized);
+        if (repaired && repaired !== sanitized) {
+          const fallbackId = `mermaid-rep-${Math.random().toString(36).substring(2, 9)}`;
+          mermaid
+            .render(fallbackId, repaired)
+            .then((fallbackRes) => {
+              if (isMounted) {
+                setSvgContent(fallbackRes.svg);
+                setError(null);
+              }
+            })
+            .catch((fallbackErr) => {
+              if (isMounted) {
+                console.warn("Mermaid primary & repair error:", primaryErr, fallbackErr);
+                setError(primaryErr?.message || "Failed to render diagram");
+              }
+            });
+        } else {
+          if (isMounted) {
+            console.warn("Mermaid render error:", primaryErr);
+            setError(primaryErr?.message || "Failed to render diagram");
+          }
         }
       });
 
@@ -188,14 +242,14 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
       document.querySelectorAll(`[id^="${id}"]`).forEach((el) => el.remove());
       document.querySelectorAll('.mermaid-error-svg, [id^="dmermaid"]').forEach((el) => el.remove());
     };
-  }, [chart]);
+  }, [chart, isChat]);
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.15, 2.5));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.15, 0.4));
   const handleZoomReset = () => setZoom(1.0);
 
   const handleCopyMermaid = () => {
-    navigator.clipboard.writeText(chart);
+    navigator.clipboard.writeText(cleanedDiagram || chart);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -251,11 +305,11 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
     image.src = blobURL;
   }, [svgContent]);
 
-  if (!chart || !chart.trim() || error === "EMPTY_DIAGRAM") {
+  if (!chart || !chart.trim() || error === "EMPTY_DIAGRAM" || error === "NO_DIAGRAM_SYNTAX") {
     return (
       <div className="my-3 px-4 py-3 bg-[#0d1017] border border-[#242834] rounded-xl flex items-center gap-2 text-xs text-gray-400 font-mono">
         <span>📊 Architecture Blueprint:</span>
-        <span className="text-gray-500">No diagram specification available.</span>
+        <span className="text-gray-500">No visual diagram specification available.</span>
       </div>
     );
   }
@@ -285,7 +339,7 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
             Visual SVG rendering could not parse this diagram syntax. Displaying usable structural blueprint:
           </p>
           <pre className="text-gray-300 bg-[#0d1017] p-3 rounded-xl overflow-x-auto border border-[#242834] leading-relaxed text-[12px]">
-            {chart}
+            {cleanedDiagram || chart}
           </pre>
         </div>
       </div>

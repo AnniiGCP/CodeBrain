@@ -1,89 +1,91 @@
 # CodeBrain — Manual Actions Required Checklist
 
-**Document:** `docs/MANUAL_ACTIONS_REQUIRED.md`  
-**Purpose:** Precise, step-by-step checklist of manual administrative actions required to verify and maintain the live production deployment of CodeBrain.
+**File:** `docs/MANUAL_ACTIONS_REQUIRED.md`  
+**Date:** October 17, 2026  
+**Auditor / Engineering Lead:** CodeBrain Core Systems & Reliability Engineering  
+**Release Recommendation:** `PARTIALLY READY` (Local test suites pass 100%; manual cloud deployment and GitHub credentials required for live remote operations).
 
 ---
 
-## 1. Mandatory Deployment Actions
+## 1. Summary of Required User Actions
 
-### Step 1: Render Build & Deploy Cycle Verification
-- **Platform:** Render Dashboard (`https://dashboard.render.com`)
-- **Service:** `codebrain-backend` (Web Service)
-- **Setting / Page:** **Events** / **Logs**
-- **Action:**
-  1. Open the `codebrain-backend` service page.
-  2. Confirm that the latest commit (`fix(database): ensure PostgreSQL schema migrations execute on startup by isolating SQLite PRAGMA calls`) has triggered a build and is showing **Deploy Live**.
-  3. Inspect the startup log and confirm the following line appears without error:
+The following 3 manual actions genuinely require user authorization and credentials:
+
+1. **GitHub Personal Access Token (PAT) Configuration for Remote Pushes**
+2. **Pushing Verified Local Changes to `origin/main` for Production Deployment**
+3. **Validating APINex GPT-6 Luna Environment Variables on Render**
+
+---
+
+## 2. Action Details & Step-by-Step Instructions
+
+### Action 1: GitHub PAT Setup (Resolves Git Push Exit Code 128)
+- **Why Required:** Password authentication for Git operations was removed by GitHub. In local development or dev-login modes, Git pushes to branches like `ai-fix/f1bfa8e1-gen001-app` or `codebrain/setup-ci-workflow` on `https://github.com/AnniiGCP/QuizGenAI.git` require an authorized GitHub Personal Access Token or OAuth session.
+- **Exact Steps:**
+  1. Go to your GitHub account: **Settings** -> **Developer settings** -> **Personal access tokens** -> **Tokens (classic)**.
+  2. Click **Generate new token (classic)** with note: `CodeBrain Remote Ops`.
+  3. Select scopes:
+     - `repo` (Full control of private repositories)
+     - `workflow` (Update GitHub Action workflows)
+  4. Generate and copy the token (`ghp_...`).
+  5. In CodeBrain:
+     - In the bottom status bar or User Settings modal, paste the token into the **GitHub Token** field.
+     - Alternatively, export it in your environment:
+       ```bash
+       $env:GITHUB_TOKEN="ghp_your_token_here"
+       ```
+  6. Re-run **Apply Fix to Repo** or **Install via Pull Request**. Git push will authenticate via HTTPS Bearer token cleanly.
+
+---
+
+### Action 2: Trigger Cloud Deployments (Render & Vercel)
+- **Why Required:** Antigravity operates under strict safety rules and will not push to `origin/main` on remote production without explicit authorization.
+- **Exact Steps:**
+  1. In the CodeBrain repository root (`ai/`), review changes:
+     ```bash
+     git status
      ```
-     [INFO] Application startup complete. Uvicorn running on http://0.0.0.0:10000
+  2. Stage and commit the verified production recovery changes:
+     ```bash
+     git add backend/ frontend/ docs/
+     git commit -m "fix(production): patch safety, dynamic problem reconciliation, CI/CD PYTHONPATH, and git push auth error handling"
      ```
-  4. Ensure no `ProgrammingError` or `UnboundLocalError` appears in the logs during table migrations.
-- **Verification:** Open `https://codebrain-backend.onrender.com/health` in your browser. It must return HTTP 200 with:
-  ```json
-  {"status":"ok","version":"0.8.1","database":"connected","checks":{"liveness":"pass","readiness":"pass"}}
-  ```
-- **Next Step:** Proceed to Step 2.
+  3. Push to GitHub:
+     ```bash
+     git push origin main
+     ```
+  4. **Verify Render Backend Deployment:**
+     - Open [Render Dashboard](https://dashboard.render.com).
+     - Select service `codebrain-backend`.
+     - Confirm the deploy completes with `Application startup complete.`
+     - Test live health check: `https://codebrain-backend.onrender.com/health` -> HTTP 200.
+  5. **Verify Vercel Frontend Deployment:**
+     - Open [Vercel Dashboard](https://vercel.com/dashboard).
+     - Select `codebrain-dev`.
+     - Confirm the latest deployment is **Ready**.
 
 ---
 
-### Step 2: Supabase Column Verification (Optional Inspection)
-- **Platform:** Supabase Dashboard (`https://supabase.com/dashboard`)
-- **Project:** CodeBrain Production Project
-- **Setting / Page:** **Table Editor** -> `users` and `repos`
-- **Action:**
-  1. Select the `users` table.
-  2. Verify that the columns `user_email` (text/varchar) and `password_hash` (text/varchar) are present.
-  3. Select the `repos` table.
-  4. Verify that `last_activity_summary` (text) and `last_activity_at` (timestamptz) are present.
-- **Verification:** If the columns are present, startup migrations have completed successfully. If not, open the **SQL Editor** tab and execute:
-  ```sql
-  ALTER TABLE users ADD COLUMN IF NOT EXISTS user_email VARCHAR UNIQUE;
-  ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR;
-  ALTER TABLE repos ADD COLUMN IF NOT EXISTS last_activity_summary TEXT;
-  ALTER TABLE repos ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP WITH TIME ZONE;
-  ```
-- **Next Step:** Proceed to Step 3.
+### Action 3: Verify APINex GPT-6 Luna API Key in Production
+- **Why Required:** The centralized AI orchestration layer routes all code fixing, documentation, and chat requests to APINex GPT-6 Luna first.
+- **Exact Steps:**
+  1. In Render Dashboard -> `codebrain-backend` -> **Environment**:
+  2. Confirm `APINEX_API_KEY` is configured with your valid APINex key.
+  3. Confirm `APINEX_BASE_URL` is set to `https://api.apinex.io/v1` (or your configured APINex endpoint).
+  4. Confirm fallback keys (`NVIDIA_API_KEY` and `GROQ_API_KEY`) are present for multi-tier bounded failover.
 
 ---
 
-### Step 3: Vercel Frontend Deployment Verification
-- **Platform:** Vercel Dashboard (`https://vercel.com/dashboard`)
-- **Project:** `codebrain` / `codebrain-dev`
-- **Setting / Page:** **Deployments**
-- **Action:**
-  1. Verify the production deployment linked to branch `main` is marked **Ready**.
-  2. In **Settings** -> **Environment Variables**, ensure:
-     - `VITE_API_URL` is set to `https://codebrain-backend.onrender.com`
-     - (No trailing slash).
-- **Verification:** Visit `https://codebrain-dev.vercel.app`. Open DevTools Console. Confirm no CORS or 404 errors appear on page load.
-- **Next Step:** Proceed to Section 2 (Verification Testing).
+## 3. Verification Checklist After Deployment
 
----
+Once the 3 actions above are executed, perform these live checks in `https://codebrain-dev.vercel.app`:
 
-## 2. Verification Testing in Browser
-
-### Step 4: Repository Ingestion Smoke Test
-- **Platform:** CodeBrain Web App (`https://codebrain-dev.vercel.app`)
-- **Action:**
-  1. Log into your account or register a new user.
-  2. Click **+ Add Repository**.
-  3. Enter `https://github.com/AnniiGCP/QuizGenAI`.
-  4. Click **Clone Repository**.
-- **Expected Behavior:**
-  - The modal closes immediately (within <500ms) with a toast: *"Repository clone started in background"*.
-  - The bottom status bar shows: *"Cloning repository from GitHub…"*, followed by *"Discovering and indexing files…"*, *"Extracting code symbols…"*, and *"Analysing structure…"*.
-  - The File Tree populates automatically with QuizGenAI source files.
-  - The Problems panel shows the 4 detected issues (`PY007` in `test_auth_flow.py`, `GEN001` in `app.py` and `qwen_llm.py`).
-
----
-
-## 3. Optional Performance Improvements
-
-### Step 5: Render Free Tier Inactivity Prevention (Optional)
-- **Platform:** Uptime Monitoring Service (e.g., UptimeRobot / Cron-Job.org)
-- **Setting:** HTTP Monitor
-- **Action:**
-  1. Create a free HTTP monitor targeting: `https://codebrain-backend.onrender.com/health`
-  2. Set interval to **every 10 minutes**.
-- **Benefit:** Prevents Render free-tier services from sleeping after 15 minutes of inactivity, completely eliminating the 45–60 second cold start delay.
+- [ ] Open QuizGenAI workspace.
+- [ ] Verify Problems panel loads 4 issues initially.
+- [ ] Click **Fix** on `PY007` in `test_auth_flow.py`.
+- [ ] Review diff; confirm it only replaces passwords with `TEST_PASSWORD` (no deleted test functions, no conversational `"I'll inspect..."` text).
+- [ ] Click **Apply Fix to Repo**.
+- [ ] Confirm `PY007` **disappears** from the Problems panel, leaving only 3 issues.
+- [ ] Confirm terminal displays clean branch creation and remote push confirmation.
+- [ ] Open CI/CD tab; inspect proposed `ci.yml`. Confirm `PYTHONPATH: .` is present in backend test step.
+- [ ] Click **Install via Pull Request**; confirm PR URL is returned.

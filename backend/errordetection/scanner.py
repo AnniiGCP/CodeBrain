@@ -404,3 +404,78 @@ def detect_errors(repo_id: str, db: "Session") -> dict:
         "ai_insights": [],
         "issues": actionable_issues,  # used by pipeline to persist ErrorReports
     }
+
+
+def rescan_file(repo_id: str, file_path: str, db: "Session") -> list[dict]:
+    """
+    Re-scan a single file after a patch has been applied to determine if the defect
+    was resolved, if new defects were introduced, and to update line numbers.
+    Returns list of active findings (errors and warnings) for this file.
+    """
+    from models import RepoFile
+
+    storage_root = STORAGE_ROOT / repo_id
+    clean_path = file_path.replace("\\", "/").strip().lstrip("./")
+
+    rf = db.query(RepoFile).filter(RepoFile.repo_id == repo_id, RepoFile.path == clean_path).first()
+    language = (rf.language if rf else None) or ("python" if clean_path.endswith(".py") else "javascript")
+
+    disk_p = storage_root / clean_path
+    if not disk_p.exists() and storage_root.exists() and storage_root.is_dir():
+        for child in storage_root.iterdir():
+            if child.is_dir() and (child / clean_path).exists():
+                disk_p = child / clean_path
+                break
+
+    if not disk_p.exists() or not disk_p.is_file():
+        logger.warning("[RESCAN] File %s not found on disk at %s", clean_path, disk_p)
+        return []
+
+    file_issues: list[dict] = []
+
+    # 1. Syntax check
+    syntax_errs = _check_file_syntax(disk_p, clean_path, language)
+    for serr in syntax_errs:
+        file_issues.append(serr)
+
+    # 2. Rule scan
+    if _is_code_file(clean_path, language):
+        rules = _get_rules_for_language(language)
+        is_test_file = _is_test_or_benchmark_file(clean_path)
+
+        try:
+            lines = disk_p.read_text(encoding="utf-8", errors="replace").splitlines()
+            file_rule_seen: set[str] = set()
+            for line_idx, line_text in enumerate(lines, 1):
+                for rule_id, category, severity, pattern, message in rules:
+                    if is_test_file and rule_id in ("PY_REC001", "JS_REC001"):
+                        continue
+                    if category == "RECOMMENDATION" and rule_id in file_rule_seen:
+                        continue
+                    m = pattern.search(line_text)
+                    if m:
+                        file_rule_seen.add(rule_id)
+                        col_offset = m.start() + 1
+                        issue_dict = {
+                            "symbol_id": None,
+                            "symbol_name": None,
+                            "symbol_type": "line",
+                            "file_path": clean_path,
+                            "language": language,
+                            "rule_id": rule_id,
+                            "source": "static_analysis",
+                            "category": category,
+                            "severity": severity,
+                            "message": message,
+                            "line": line_idx,
+                            "column": col_offset,
+                            "code": line_text.strip(),
+                            "stack_trace": None,
+                            "evidence": f"Rule {rule_id} detected on disk line {line_idx}:{col_offset} - '{line_text.strip()}'",
+                        }
+                        if _validate_issue_against_disk(disk_p, issue_dict, pattern):
+                            file_issues.append(issue_dict)
+        except Exception as exc:
+            logger.warning("[RESCAN] Failed to read lines from %s: %s", disk_p, exc)
+
+    return file_issues

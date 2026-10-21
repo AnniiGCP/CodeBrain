@@ -330,6 +330,10 @@ def dispatch_workflow_endpoint(
             token=user_token,
         )
         return {"repo_id": repo.id, **res}
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         clean_err = sanitize_sensitive_text(str(exc))
         logger.exception("Workflow dispatch error: %s", clean_err)

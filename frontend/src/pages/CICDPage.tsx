@@ -402,19 +402,19 @@ export const CICDPage: FC<CICDPageProps> = ({ user, onLogout }) => {
   };
 
   // Helper formatting badges
-  const renderStatusBadge = () => {
+  const renderInstallationBadge = () => {
     const s = overview?.setup_status;
     if (s === "installed") {
       return (
-        <span className="px-2.5 py-1 bg-emerald-950/80 border border-emerald-700 text-emerald-400 rounded-full text-xs font-semibold flex items-center gap-1.5">
-          <CheckCircle2 size={13} />
-          <span>Installed & Active</span>
+        <span className="px-2.5 py-1 bg-zinc-800/90 border border-zinc-700 text-zinc-300 rounded-full text-xs font-semibold flex items-center gap-1.5" title="Workflow file is present in repository">
+          <FileCode size={13} className="text-purple-400" />
+          <span>Installed</span>
         </span>
       );
     }
     if (s === "awaiting_installation") {
       return (
-        <span className="px-2.5 py-1 bg-purple-950/80 border border-purple-700 text-purple-300 rounded-full text-xs font-semibold flex items-center gap-1.5">
+        <span className="px-2.5 py-1 bg-purple-950/80 border border-purple-700 text-purple-300 rounded-full text-xs font-semibold flex items-center gap-1.5" title="Pull Request is open awaiting merge">
           <GitPullRequest size={13} />
           <span>Awaiting Merge (PR Open)</span>
         </span>
@@ -422,7 +422,7 @@ export const CICDPage: FC<CICDPageProps> = ({ user, onLogout }) => {
     }
     if (s === "proposed") {
       return (
-        <span className="px-2.5 py-1 bg-amber-950/80 border border-amber-700 text-amber-300 rounded-full text-xs font-semibold flex items-center gap-1.5">
+        <span className="px-2.5 py-1 bg-amber-950/80 border border-amber-700 text-amber-300 rounded-full text-xs font-semibold flex items-center gap-1.5" title="Pipeline proposal generated">
           <Sparkles size={13} />
           <span>Proposal Ready</span>
         </span>
@@ -432,6 +432,67 @@ export const CICDPage: FC<CICDPageProps> = ({ user, onLogout }) => {
       <span className="px-2.5 py-1 bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-full text-xs font-semibold flex items-center gap-1.5">
         <AlertCircle size={13} />
         <span>Not Configured</span>
+      </span>
+    );
+  };
+
+  const renderLatestHealthBadge = () => {
+    const latestRun = runs.length > 0 ? runs[0] : null;
+    const conclusion = (latestRun?.conclusion || overview?.last_run_conclusion || "").toLowerCase();
+    const status = (latestRun?.status || overview?.last_run_status || "").toLowerCase();
+
+    if (conclusion === "success") {
+      return (
+        <span className="px-2.5 py-1 bg-emerald-950/80 border border-emerald-700 text-emerald-400 rounded-full text-xs font-semibold flex items-center gap-1.5" title="Latest workflow run passed all quality gates">
+          <CheckCircle2 size={13} />
+          <span>Passing</span>
+        </span>
+      );
+    }
+    if (conclusion === "failure") {
+      return (
+        <span className="px-2.5 py-1 bg-red-950/80 border border-red-700 text-red-400 rounded-full text-xs font-semibold flex items-center gap-1.5" title="Latest workflow run failed one or more quality gates">
+          <XCircle size={13} />
+          <span>Failing (Check Logs)</span>
+        </span>
+      );
+    }
+    if (conclusion === "cancelled") {
+      return (
+        <span className="px-2.5 py-1 bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-full text-xs font-semibold flex items-center gap-1.5">
+          <Slash size={13} />
+          <span>Cancelled</span>
+        </span>
+      );
+    }
+    if (status === "in_progress") {
+      return (
+        <span className="px-2.5 py-1 bg-amber-950/80 border border-amber-700 text-amber-300 rounded-full text-xs font-semibold flex items-center gap-1.5">
+          <RefreshCw size={13} className="animate-spin" />
+          <span>Running</span>
+        </span>
+      );
+    }
+    if (status === "queued" || status === "waiting" || status === "requested") {
+      return (
+        <span className="px-2.5 py-1 bg-purple-950/80 border border-purple-700 text-purple-300 rounded-full text-xs font-semibold flex items-center gap-1.5">
+          <Clock size={13} />
+          <span>Queued</span>
+        </span>
+      );
+    }
+    if (overview?.setup_status === "installed") {
+      return (
+        <span className="px-2.5 py-1 bg-zinc-800/80 border border-zinc-700 text-zinc-400 rounded-full text-xs font-semibold flex items-center gap-1.5">
+          <Clock size={13} />
+          <span>No Run History</span>
+        </span>
+      );
+    }
+    return (
+      <span className="px-2.5 py-1 bg-zinc-800 border border-zinc-700 text-zinc-500 rounded-full text-xs font-semibold flex items-center gap-1.5">
+        <MinusCircle size={13} />
+        <span>N/A</span>
       </span>
     );
   };
@@ -603,10 +664,15 @@ export const CICDPage: FC<CICDPageProps> = ({ user, onLogout }) => {
         )}
 
         {/* Per-Repository Status Bar */}
-        <div className="bg-[#252526] border border-[#3c3c3c] rounded-2xl p-5 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+        <div className="bg-[#252526] border border-[#3c3c3c] rounded-2xl p-5 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-center">
           <div>
-            <span className="text-[11px] text-gray-400 block mb-1">CI Status</span>
-            {renderStatusBadge()}
+            <span className="text-[11px] text-gray-400 block mb-1">Pipeline Config</span>
+            {renderInstallationBadge()}
+          </div>
+
+          <div>
+            <span className="text-[11px] text-gray-400 block mb-1">Latest Run Health</span>
+            {renderLatestHealthBadge()}
           </div>
 
           <div>

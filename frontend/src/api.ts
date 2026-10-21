@@ -1018,8 +1018,24 @@ export async function generateReadme(
   return data;
 }
 
-export async function generateMasterDocs(repoId: string): Promise<MasterDocsResponse> {
-  const res = await apiFetch(`${API_BASE}/repos/${repoId}/docs/master`, { method: "POST" });
+export interface DocGenProgressResponse {
+  status: string;
+  percentage: number;
+  current_section: string;
+  section_number: number;
+  completed: number;
+  total: number;
+}
+
+export async function fetchDocGenProgress(repoId: string): Promise<DocGenProgressResponse> {
+  const res = await apiFetch(`${API_BASE}/repos/${repoId}/docs/progress`);
+  if (!res.ok) throw new Error(await res.text().catch(() => "Failed to fetch doc progress"));
+  return res.json();
+}
+
+export async function generateMasterDocs(repoId: string, force: boolean = false): Promise<MasterDocsResponse> {
+  const qs = force ? "?force=true" : "";
+  const res = await apiFetch(`${API_BASE}/repos/${repoId}/docs/master${qs}`, { method: "POST" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail ?? "Master documentation generation failed");

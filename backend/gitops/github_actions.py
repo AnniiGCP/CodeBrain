@@ -88,6 +88,12 @@ def fetch_remote_file_content(
         content_b64 = data.get("content", "")
         if content_b64:
             return base64.b64decode(content_b64).decode("utf-8", errors="replace")
+        download_url = data.get("download_url")
+        if download_url:
+            with httpx.Client(timeout=15) as dl_client:
+                dl_resp = dl_client.get(download_url, headers=headers)
+            if dl_resp.is_success:
+                return dl_resp.text
         return None
     except Exception as exc:
         logger.warning("Failed to fetch file content for %s at %s: %s", repo_full_name, path, exc)
@@ -306,6 +312,16 @@ def dispatch_github_workflow(
             logger.info("Successfully dispatched workflow %s on %s/%s (ref=%s)", clean_wf, owner, repo, ref)
             return {"status": "dispatched", "workflow": clean_wf, "ref": ref}
         clean_text = resp.text.replace("\n", " ").strip()
+        if resp.status_code == 403:
+            if "admin rights" in clean_text.lower():
+                raise PermissionError(
+                    f"GitHub permission denied (403): Your GitHub account or token does not have admin/write rights to '{owner}/{repo}', or your token is missing the 'workflow' / 'actions:write' scope. Note: you cannot dispatch GitHub Actions on a repository you don't have write access to."
+                )
+            raise PermissionError(f"GitHub access forbidden (403): {clean_text}")
+        if resp.status_code == 404:
+            raise FileNotFoundError(
+                f"Workflow '{clean_wf}' not found on default branch of '{owner}/{repo}'. In GitHub Actions, a workflow file must be merged into the repository's default branch before it can be dispatched via API."
+            )
         raise RuntimeError(f"Workflow dispatch failed [{resp.status_code}]: {clean_text}")
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Network error during workflow dispatch: {exc}")

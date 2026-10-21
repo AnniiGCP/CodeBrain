@@ -476,14 +476,36 @@ def apply_fix_for_report(report_id: str, db: Session, user_token: str | None = N
     except Exception as exc:
         err_msg = f"Git commit/push failed: {exc}"
         clean_err = sanitize_sensitive_text(str(exc))
+        if "password authentication is not supported" in clean_err.lower() or "invalid username or token" in clean_err.lower():
+            friendly_push_note = "GitHub write token not configured for this user. Connect GitHub OAuth to enable remote push."
+        else:
+            friendly_push_note = clean_err
+
         logger.warning("%s. Treating local branch commit as successfully applied.", err_msg)
 
         # The patch was applied and committed to the local branch by create_branch_and_commit.
-        # Mark fix as APPLIED_LOCAL and report success with clear attribution.
-        report.fix_status = "APPLIED_LOCAL"
+        # Re-scan file to verify if defect was resolved
+        from errordetection.scanner import rescan_file
+        remaining_issues = rescan_file(report.repo_id, report.file_path, db)
+        still_present = any(iss.get("rule_id") == report.rule_id for iss in remaining_issues)
+
+        report.fix_status = "RESOLVED" if not still_present else "APPLIED_LOCAL"
         report.branch_name = branch_name
         report.pr_status = "NONE"
         report.fix_error = None
+
+        # Reconcile line numbers for other remaining issues in the same file
+        if not still_present:
+            other_reports = db.query(ErrorReport).filter(
+                ErrorReport.repo_id == report.repo_id,
+                ErrorReport.file_path == report.file_path,
+                ErrorReport.id != report.id,
+            ).all()
+            for o_rep in other_reports:
+                m_iss = next((iss for iss in remaining_issues if iss.get("rule_id") == o_rep.rule_id), None)
+                if m_iss and m_iss.get("line"):
+                    o_rep.line = m_iss["line"]
+
         db.commit()
 
         _add_log(
@@ -491,13 +513,14 @@ def apply_fix_for_report(report_id: str, db: Session, user_token: str | None = N
             error_id=report.id,
             stage="FIX_APPLIED",
             outcome="SUCCESS",
-            message=f"Applied fix to local workspace on branch '{branch_name}' (remote push skipped: {clean_err}).",
+            message=f"Applied fix to local workspace on branch '{branch_name}' (remote push skipped: {friendly_push_note}).",
             db=db,
         )
         return {
             "report_id": report.id,
             "status": "applied_local",
-            "fix_status": "APPLIED_LOCAL",
+            "fix_status": report.fix_status,
+            "resolved": not still_present,
             "patch_status": "FIX_APPLIED",
             "validation_status": "NOT_RUN",
             "validation_skipped": True,
@@ -505,9 +528,26 @@ def apply_fix_for_report(report_id: str, db: Session, user_token: str | None = N
             "branch_name": branch_name,
             "passed": True,
             "changed_files": [report.file_path] if report.file_path else [],
-            "output": f"Patch applied cleanly to branch '{branch_name}' (remote push skipped: {clean_err}).",
+            "output": f"Patch applied cleanly to branch '{branch_name}' (remote push skipped: {friendly_push_note}).",
             "error": None,
         }
+
+    # If push succeeded, also re-scan file to verify resolution
+    from errordetection.scanner import rescan_file
+    remaining_issues = rescan_file(report.repo_id, report.file_path, db)
+    still_present = any(iss.get("rule_id") == report.rule_id for iss in remaining_issues)
+    if not still_present:
+        report.fix_status = "RESOLVED"
+        other_reports = db.query(ErrorReport).filter(
+            ErrorReport.repo_id == report.repo_id,
+            ErrorReport.file_path == report.file_path,
+            ErrorReport.id != report.id,
+        ).all()
+        for o_rep in other_reports:
+            m_iss = next((iss for iss in remaining_issues if iss.get("rule_id") == o_rep.rule_id), None)
+            if m_iss and m_iss.get("line"):
+                o_rep.line = m_iss["line"]
+        db.commit()
 
     _add_log(
         repo_id=report.repo_id,

@@ -5,6 +5,8 @@ import {
   fetchDocSections,
   getFormatDownloadUrl,
   commitDocsToRepo,
+  fetchDocGenProgress,
+  type DocGenProgressResponse,
 } from "../api";
 import MermaidDiagram from "./MermaidDiagram";
 
@@ -38,6 +40,7 @@ export default function DocPanel({ repo }: DocPanelProps) {
   const [masterContent, setMasterContent] = useState<string>("");
   const [validationSummary, setValidationSummary] = useState<DocValidationSummary | null>(null);
   const [generatingSuite, setGeneratingSuite] = useState(false);
+  const [genProgress, setGenProgress] = useState<DocGenProgressResponse | null>(null);
   const [committingDocs, setCommittingDocs] = useState(false);
   const [commitResult, setCommitResult] = useState<CommitDocsResponse | null>(null);
   const [suiteError, setSuiteError] = useState<string | null>(null);
@@ -66,21 +69,50 @@ export default function DocPanel({ repo }: DocPanelProps) {
   }, [loadExistingSections]);
 
   const handleGenerateFullSuite = async () => {
+    const isRegen = Boolean(masterContent || sections.length > 0);
     setGeneratingSuite(true);
     setSuiteError(null);
     setCommitResult(null);
+    setGenProgress({
+      status: "generating",
+      percentage: 0,
+      current_section: isRegen ? "Cleaning cached documentation..." : "Initializing documentation engine...",
+      section_number: 1,
+      completed: 0,
+      total: 16,
+    });
+
+    const pollInterval = window.setInterval(async () => {
+      try {
+        const prog = await fetchDocGenProgress(repo.repo_id);
+        if (prog && prog.status === "generating") {
+          setGenProgress(prog);
+        }
+      } catch (err) {}
+    }, 600);
+
     try {
-      const res = await generateMasterDocs(repo.repo_id);
+      const res = await generateMasterDocs(repo.repo_id, isRegen);
       setMasterContent(res.master_readme);
       setSections(res.sections);
       if (res.validation_summary) {
         setValidationSummary(res.validation_summary);
       }
       setSelectedSectionIdx("master");
+      setGenProgress({
+        status: "complete",
+        percentage: 100,
+        current_section: "All 16 sections generated successfully",
+        section_number: 16,
+        completed: 16,
+        total: 16,
+      });
     } catch (err: unknown) {
       setSuiteError(err instanceof Error ? err.message : "Failed to generate master documentation suite");
     } finally {
+      clearInterval(pollInterval);
       setGeneratingSuite(false);
+      setTimeout(() => setGenProgress(null), 3500);
     }
   };
 
@@ -239,7 +271,7 @@ export default function DocPanel({ repo }: DocPanelProps) {
           <button
             onClick={handleGenerateFullSuite}
             disabled={generatingSuite || committingDocs}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 font-medium text-xs rounded-xl shadow-lg flex items-center gap-2 transition-all"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 font-medium text-xs rounded-xl shadow-lg flex items-center gap-2 transition-all cursor-pointer"
           >
             {generatingSuite ? (
               <>
@@ -247,7 +279,11 @@ export default function DocPanel({ repo }: DocPanelProps) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
-                <span>Generating Suite…</span>
+                <span>
+                  {genProgress && genProgress.percentage > 0
+                    ? `Generating... ${genProgress.percentage}% (${genProgress.completed}/${genProgress.total || 16})`
+                    : "Generating Suite…"}
+                </span>
               </>
             ) : (
               <>
@@ -258,6 +294,36 @@ export default function DocPanel({ repo }: DocPanelProps) {
           </button>
         </div>
       </div>
+
+      {/* Real-time Generation Progress Bar */}
+      {generatingSuite && genProgress && (
+        <div className="bg-[#121315] border-b border-blue-500/30 px-6 py-2.5 flex flex-col gap-1.5 shadow-md shrink-0">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex h-2 w-2 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </span>
+              <span className="font-semibold text-white shrink-0">
+                Generating Section {genProgress.section_number || 1} of {genProgress.total || 16}:
+              </span>
+              <span className="text-blue-300 font-medium truncate">
+                {genProgress.current_section || "Analyzing repository architecture..."}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 font-mono text-xs shrink-0 pl-2">
+              <span className="text-blue-400 font-bold">{genProgress.percentage}%</span>
+              <span className="text-zinc-500">({genProgress.completed}/{genProgress.total || 16})</span>
+            </div>
+          </div>
+          <div className="w-full bg-[#1e1f23] rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-400 h-1.5 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${Math.max(4, Math.min(100, genProgress.percentage))}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {commitResult && (
         <div className="mx-6 mt-3 px-4 py-2.5 bg-emerald-950/80 border border-emerald-700/80 rounded-xl text-emerald-200 text-xs flex items-center justify-between shadow-md animate-fade-in">

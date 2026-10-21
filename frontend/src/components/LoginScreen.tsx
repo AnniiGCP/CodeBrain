@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { API_BASE, registerUser, passwordLogin } from "../api";
+import { API_BASE, registerUser, passwordLogin, devLogin } from "../api";
 import type { User } from "../types";
-import { CheckCircle2, Eye, EyeOff, Lock, Mail, User as UserIcon, ArrowRight } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Lock, Mail, User as UserIcon, ArrowRight, Terminal } from "lucide-react";
 
 interface LoginScreenProps {
   onLoginSuccess?: (user: User) => void;
@@ -28,6 +28,28 @@ export default function LoginScreen({ onLoginSuccess, onDevLoginSuccess }: Login
 
   const handleGitHubLogin = () => {
     window.location.href = `${API_BASE}/auth/github/login`;
+  };
+
+  const handleDevBypass = async () => {
+    setError(null);
+    setSuccessMsg(null);
+    setLoading(true);
+    try {
+      const devHandle = email.trim() || username.trim() || "dev_user";
+      const user = await devLogin(devHandle);
+      setSuccessMsg(`Developer bypass successful as @${user.github_username || devHandle}! Redirecting...`);
+      setTimeout(() => {
+        if (handleSuccess) {
+          handleSuccess(user);
+        } else {
+          window.location.href = "/dashboard";
+        }
+      }, 400);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Developer login bypass failed.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -274,6 +296,28 @@ export default function LoginScreen({ onLoginSuccess, onDevLoginSuccess }: Login
               <ArrowRight size={13} />
             </button>
           </form>
+        </div>
+
+        {/* Developer Bypass Login Section */}
+        <div className="pt-2 border-t border-[#2a2b2e]/80 space-y-2">
+          <div className="flex items-center justify-between text-[11px] text-[#71717a]">
+            <span>Development Bypass</span>
+            <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">DEV MODE</span>
+          </div>
+
+          <button
+            id="auth-dev-bypass-btn"
+            type="button"
+            onClick={handleDevBypass}
+            disabled={loading}
+            className="w-full py-2.5 px-4 bg-[#202124] hover:bg-[#28292d] active:bg-[#1e1f21] text-amber-300 hover:text-amber-200 border border-amber-500/30 hover:border-amber-500/60 rounded-xl font-medium transition-all duration-150 flex items-center justify-center gap-2.5 shadow-sm cursor-pointer disabled:opacity-50 text-xs sm:text-sm group"
+          >
+            <Terminal size={14} className="text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
+            <span>Developer Bypass Login</span>
+          </button>
+          <p className="text-[10px] text-center text-[#71717a]">
+            Instant mock session bypass without requiring GitHub OAuth or credentials.
+          </p>
         </div>
 
 

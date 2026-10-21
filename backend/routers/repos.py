@@ -377,15 +377,29 @@ def clone_github_repo(
                 detail="You don't have access to this repository, or it doesn't exist.",
             )
         elif check_resp.status_code == 403:
-            if user_token:
+            resp_text = ""
+            try:
+                resp_text = str(check_resp.text).lower()
+            except Exception:
+                pass
+            resp_headers = getattr(check_resp, "headers", {})
+            is_rate_limit = (
+                "rate limit" in resp_text
+                or str(resp_headers.get("x-ratelimit-remaining", "")) == "0"
+                or "secondary rate limit" in resp_text
+            )
+            has_explicit_user_token = bool(body.access_token or get_user_github_token(current_user))
+            if has_explicit_user_token and not is_rate_limit:
                 raise HTTPException(
                     status_code=400,
                     detail="Your GitHub token does not have permission to access this repository.",
                 )
             else:
                 logger.warning(
-                    "GitHub API pre-flight returned 403 (unauthenticated rate limit). Proceeding with direct git clone for %s/%s",
-                    owner, repo_slug,
+                    "GitHub API pre-flight returned 403 (%s). Proceeding with direct git clone for %s/%s",
+                    "rate limit" if is_rate_limit else "unauthenticated rate limit",
+                    owner,
+                    repo_slug,
                 )
     except HTTPException:
         raise
@@ -745,6 +759,45 @@ def get_repo_files(
 # GET /repos/{repo_id}/file-content
 # ──────────────────────────────────────────────
 
+def _restore_repo_on_disk(repo: Repo, current_user: User) -> bool:
+    """Restore repository workspace on disk from GitHub when running on ephemeral container hosting."""
+    repo_dir = STORAGE_ROOT / repo.id
+    if GitRepo is None:
+        return False
+    from automation.ci_setup import get_repo_full_name
+    repo_full_name = get_repo_full_name(repo)
+    if not repo_full_name or "/" not in repo_full_name:
+        return False
+
+    user_token = get_user_github_token(current_user)
+    if not user_token:
+        env_token = os.environ.get("GITHUB_TOKEN", "").strip()
+        if env_token and not env_token.startswith("your_"):
+            user_token = env_token
+
+    canonical_url = f"https://github.com/{repo_full_name}"
+    clone_url = canonical_url
+    if user_token:
+        clone_url = f"https://{user_token}@github.com/{repo_full_name}.git"
+
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        git_repo = GitRepo.clone_from(clone_url, str(repo_dir), depth=1)
+        try:
+            git_repo.remotes.origin.set_url(canonical_url)
+        except Exception:
+            pass
+        logger.info("Successfully restored repo %s (%s) on ephemeral disk", repo.id, repo_full_name)
+        return True
+    except Exception as exc:
+        logger.warning("Could not auto-restore repo %s from GitHub: %s", repo.id, exc)
+        return False
+
+
+# ──────────────────────────────────────────────
+# GET /repos/{repo_id}/file-content
+# ──────────────────────────────────────────────
+
 @router.get("/{repo_id}/file-content", status_code=200)
 def get_file_content(
     repo_id: str,
@@ -754,16 +807,24 @@ def get_file_content(
 ):
     """Retrieve full source code for a specific file in the repository (scoped to owner)."""
     repo = get_user_repo(repo_id, db, current_user)
-    import urllib.parse
-    raw_path = urllib.parse.unquote(path).strip()
+    raw_path = path.strip()
     
     # Path traversal and absolute path protection
     if ".." in Path(raw_path).parts or raw_path.startswith(("/", "\\")) or ":" in raw_path:
         raise HTTPException(status_code=400, detail="Invalid file path: path traversal detected.")
 
-    clean_path = raw_path.replace("\\", "/").lstrip("/")
+    clean_path = raw_path.replace("\\", "/")
+    while clean_path.startswith("./"):
+        clean_path = clean_path[2:]
+    clean_path = clean_path.lstrip("/")
 
     repo_dir = STORAGE_ROOT / repo.id
+
+    # If repo directory does not exist or has no files on disk (e.g. Render container restart), restore it
+    has_files = repo_dir.exists() and any(c for c in repo_dir.iterdir() if c.name not in ("docs", "faiss.index", "__pycache__"))
+    if not has_files and repo.source_type == "github":
+        _restore_repo_on_disk(repo, current_user)
+
     resolved_repo_dir = repo_dir.resolve()
     target_file = (repo_dir / clean_path).resolve()
 
@@ -785,10 +846,10 @@ def get_file_content(
         if found:
             target_file = found
 
-    # If clean_path starts with repo name or 'quizgenai'
+    # If clean_path starts with repo name
     if not target_file.is_file() and "/" in clean_path and repo_dir.exists():
         first_segment, rest = clean_path.split("/", 1)
-        if first_segment.lower() == repo.name.lower() or first_segment.lower() == "quizgenai":
+        if first_segment.lower() == repo.name.lower():
             candidate = (repo_dir / rest).resolve()
             if candidate.is_file():
                 target_file = candidate
@@ -803,16 +864,16 @@ def get_file_content(
                 target_file = p.resolve()
                 break
 
-    # Security check: verify resolved target is strictly contained inside repository workspace
-    try:
-        target_file.relative_to(resolved_repo_dir)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Security violation: file path escapes repository workspace.")
-
     from file_walker import detect_language
-
     BINARY_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".bin", ".pyc", ".woff", ".woff2"}
+
     if target_file.is_file():
+        # Security check: verify resolved target is strictly contained inside repository workspace
+        try:
+            target_file.relative_to(resolved_repo_dir)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Security violation: file path escapes repository workspace.")
+
         if target_file.suffix.lower() in BINARY_EXTS:
             return {
                 "repo_id": repo.id,
@@ -834,6 +895,31 @@ def get_file_content(
             raise HTTPException(status_code=403, detail=f"Permission denied reading '{clean_path}'.")
         except Exception as exc:
             raise HTTPException(status_code=500, detail=sanitize_host_paths(f"Failed to read file: {exc}"))
+
+    # Remote GitHub fallback for ephemeral container instances
+    if repo.source_type == "github":
+        try:
+            from automation.ci_setup import get_repo_full_name
+            from gitops.github_actions import fetch_remote_file_content
+            repo_full_name = get_repo_full_name(repo)
+            user_token = get_user_github_token(current_user)
+            remote_content = fetch_remote_file_content(repo_full_name, clean_path, token=user_token)
+            if remote_content is not None:
+                # Write to disk cache
+                try:
+                    target_file.parent.mkdir(parents=True, exist_ok=True)
+                    target_file.write_text(remote_content, encoding="utf-8")
+                except Exception:
+                    pass
+                return {
+                    "repo_id": repo.id,
+                    "path": clean_path,
+                    "content": remote_content,
+                    "language": detect_language(Path(clean_path)) or "plaintext",
+                    "size": len(remote_content),
+                }
+        except Exception as exc:
+            logger.warning("Remote GitHub fetch fallback failed for %s: %s", clean_path, exc)
 
     # Fallback: check if we have symbols stored in database for this file
     from models import Symbol

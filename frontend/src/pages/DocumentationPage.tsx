@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FC } from "react";
+import { useState, useEffect, useRef, useMemo, type FC } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   fetchRepos,
@@ -8,6 +8,8 @@ import {
   generateReadme,
   getFormatDownloadUrl,
   commitDocsToRepo,
+  fetchDocGenProgress,
+  type DocGenProgressResponse,
 } from "../api";
 import type { RepoSummary, DocSectionItem, DocValidationSummary, User } from "../types";
 import Navigation from "../components/Navigation";
@@ -73,6 +75,7 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
   // Action states
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState<DocGenProgressResponse | null>(null);
   const [committing, setCommitting] = useState(false);
   const [commitMessage, setCommitMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -176,18 +179,50 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
   // 4. Handlers
   const handleGenerateFullSuite = async () => {
     if (!selectedRepoId) return;
+    const isRegenerate = docSections.length > 0;
     setGenerating(true);
     setCommitMessage(null);
+    setGenProgress({
+      status: "generating",
+      percentage: 0,
+      current_section: isRegenerate ? "Cleaning cached documentation..." : "Initializing documentation engine...",
+      section_number: 1,
+      completed: 0,
+      total: 16,
+    });
+
+    // Start real-time progress polling
+    const pollInterval = window.setInterval(async () => {
+      try {
+        const prog = await fetchDocGenProgress(selectedRepoId);
+        if (prog && prog.status === "generating") {
+          setGenProgress(prog);
+        }
+      } catch (err) {
+        // Keep polling even on transient network glitches
+      }
+    }, 600);
+
     try {
-      const res = await generateMasterDocs(selectedRepoId);
+      const res = await generateMasterDocs(selectedRepoId, isRegenerate);
       setDocSections(res.sections || []);
       setMasterContent(res.master_readme || "");
       setIsSuiteComplete(Boolean(res.is_complete));
       if (res.validation_summary) setValidationSummary(res.validation_summary);
+      setGenProgress({
+        status: "complete",
+        percentage: 100,
+        current_section: "All 16 sections generated successfully",
+        section_number: 16,
+        completed: 16,
+        total: 16,
+      });
     } catch (e: any) {
       alert(`Master Documentation generation failed: ${e.message}`);
     } finally {
+      clearInterval(pollInterval);
       setGenerating(false);
+      setTimeout(() => setGenProgress(null), 3500);
     }
   };
 
@@ -239,8 +274,36 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Helper to extract diagrams from sections that actually contain mermaid syntax
-  const sectionsWithDiagrams = docSections.filter((s) => s.content.includes("```mermaid") || s.content.includes("flowchart ") || s.content.includes("graph ") || s.content.includes("sequenceDiagram"));
+  interface ExtractedDiagramItem {
+    sectionNumber: number;
+    sectionTitle: string;
+    diagramIndex: number;
+    diagramCode: string;
+  }
+
+  // Helper to extract genuine Mermaid diagrams from sections that actually contain diagram code
+  const extractedDiagrams: ExtractedDiagramItem[] = useMemo(() => {
+    const list: ExtractedDiagramItem[] = [];
+    const mermaidRegex = /```mermaid\s*([\s\S]*?)```/gi;
+
+    for (const sec of docSections) {
+      if (!sec.content) continue;
+      let match;
+      let idx = 1;
+      while ((match = mermaidRegex.exec(sec.content)) !== null) {
+        const code = match[1]?.trim();
+        if (code) {
+          list.push({
+            sectionNumber: sec.section_number ?? 0,
+            sectionTitle: sec.title || `Section ${sec.section_number}`,
+            diagramIndex: idx++,
+            diagramCode: code,
+          });
+        }
+      }
+    }
+    return list;
+  }, [docSections]);
 
   const currentSection = docSections.find((s) => s.section_number === selectedSectionNumber) || docSections[0] || null;
 
@@ -383,8 +446,12 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
           >
             {generating ? (
               <>
-                <RefreshCw size={13} className="animate-spin" />
-                <span>Generating...</span>
+                <RefreshCw size={13} className="animate-spin text-purple-200" />
+                <span>
+                  {genProgress && genProgress.percentage > 0
+                    ? `${genProgress.percentage}% (${genProgress.completed}/${genProgress.total || 16})`
+                    : "Generating..."}
+                </span>
               </>
             ) : (
               <>
@@ -395,6 +462,36 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
           </button>
         </div>
       </div>
+
+      {/* Real-time Generation Progress Bar Banner */}
+      {generating && genProgress && (
+        <div className="bg-[#121315] border-b border-purple-500/30 px-6 py-2.5 flex flex-col gap-1.5 shadow-md animate-fade-in z-20">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex h-2 w-2 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+              </span>
+              <span className="font-semibold text-white shrink-0">
+                Generating Section {genProgress.section_number || 1} of {genProgress.total || 16}:
+              </span>
+              <span className="text-purple-300 font-medium truncate">
+                {genProgress.current_section || "Analyzing repository architecture..."}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 font-mono text-xs shrink-0 pl-2">
+              <span className="text-purple-400 font-bold">{genProgress.percentage}%</span>
+              <span className="text-zinc-500">({genProgress.completed}/{genProgress.total || 16})</span>
+            </div>
+          </div>
+          <div className="w-full bg-[#1e1f23] rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-purple-600 via-indigo-500 to-purple-400 h-1.5 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${Math.max(4, Math.min(100, genProgress.percentage))}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Commit Result Banner */}
       {commitMessage && (
@@ -538,19 +635,22 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
               </p>
             </div>
 
-            {sectionsWithDiagrams.length === 0 ? (
+            {extractedDiagrams.length === 0 ? (
               <div className="p-8 text-center text-gray-500 text-xs">No diagrams found. Generate the documentation suite first.</div>
             ) : (
-              sectionsWithDiagrams.map((sec, idx) => (
+              extractedDiagrams.map((diag, idx) => (
                 <div key={idx} className="bg-[#252526] border border-[#3c3c3c] rounded-2xl p-6 shadow-xl space-y-4">
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <span className="text-blue-400 font-mono">#{sec.section_number}</span>
-                    <span>{sec.title}</span>
+                    <span className="text-blue-400 font-mono">#{diag.sectionNumber}</span>
+                    <span>{diag.sectionTitle}</span>
+                    {diag.diagramIndex > 1 && (
+                      <span className="text-xs text-gray-400 font-mono">Part {diag.diagramIndex}</span>
+                    )}
                   </h3>
                   <MermaidDiagram
-                    chart={sec.content}
-                    title={`Figure ${sec.section_number}.1 — ${sec.title}`}
-                    figureCaption={`Figure ${sec.section_number}.1: Verified structural diagram for section ${sec.section_number}`}
+                    chart={diag.diagramCode}
+                    title={`Figure ${diag.sectionNumber}.${diag.diagramIndex} — ${diag.sectionTitle}`}
+                    figureCaption={`Figure ${diag.sectionNumber}.${diag.diagramIndex}: Verified structural diagram for section ${diag.sectionNumber}`}
                   />
                 </div>
               ))
@@ -571,27 +671,27 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
 
             <div className="bg-[#252526] border border-[#3c3c3c] rounded-2xl p-6 shadow-xl">
               {(() => {
-                const relSection = docSections.find((s) => s.section_number === 4 || s.section_number === 9 || s.section_number === 8);
-                const hasDiag = relSection && (relSection.has_diagram || relSection.content.includes("```mermaid"));
-                if (hasDiag) {
+                // Priority order: Section 9 (DB Rel), Section 8 (DB Schema), Section 5 (Module Rel), Section 4 (Architecture)
+                const relCandidates = [9, 8, 5, 4];
+                let targetDiag: ExtractedDiagramItem | undefined = undefined;
+                for (const num of relCandidates) {
+                  targetDiag = extractedDiagrams.find((d: ExtractedDiagramItem) => d.sectionNumber === num);
+                  if (targetDiag) break;
+                }
+                if (!targetDiag && extractedDiagrams.length > 0) {
+                  targetDiag = extractedDiagrams[0];
+                }
+
+                if (targetDiag) {
                   return (
                     <MermaidDiagram
-                      chart={relSection.content}
-                      title="Figure 9.1 — Architectural Entity & Dependency Blueprint"
-                      figureCaption="Figure 9.1: Evidence-backed entity, module, and data flow relationships."
+                      chart={targetDiag.diagramCode}
+                      title={`Figure ${targetDiag.sectionNumber}.${targetDiag.diagramIndex} — ${targetDiag.sectionTitle} Relationships`}
+                      figureCaption={`Figure ${targetDiag.sectionNumber}.${targetDiag.diagramIndex}: Verified component and architectural relationships.`}
                     />
                   );
                 }
-                const anyDiag = docSections.find((s) => s.has_diagram || s.content.includes("```mermaid"));
-                if (anyDiag) {
-                  return (
-                    <MermaidDiagram
-                      chart={anyDiag.content}
-                      title={`Figure ${anyDiag.section_number}.1 — ${anyDiag.title} Relationships`}
-                      figureCaption={`Figure ${anyDiag.section_number}.1: Cross-component relationships.`}
-                    />
-                  );
-                }
+
                 return (
                   <div className="p-12 text-center text-gray-400 text-xs">
                     No architectural or entity relationship diagrams detected in this repository.

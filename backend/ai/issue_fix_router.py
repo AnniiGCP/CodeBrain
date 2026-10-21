@@ -70,6 +70,105 @@ class IssueFixResult:
     raw_response: str
 
 
+def _is_conversational_or_placeholder(text: str) -> bool:
+    """
+    Detect whether candidate text is an assistant conversational explanation,
+    a plan, a placeholder, or conversational English prose rather than valid code.
+    """
+    if not text or not text.strip():
+        return True
+
+    stripped = text.strip()
+    first_line = stripped.splitlines()[0].strip()
+
+    conversational_prefixes = (
+        "i'll", "i will", "let me", "i am", "in order to", "first,", "first ",
+        "step 1", "here is", "here's", "sure", "please", "as an ai", "wait,",
+        "todo:", "note:", "explanation:", "below is", "i have", "to fix",
+        "i need to", "inspect the file", "we can", "this patch", "here are",
+    )
+    lower_first = first_line.lower()
+    if any(lower_first.startswith(p) for p in conversational_prefixes):
+        return True
+
+    # Check for short single/few-line conversational statements
+    lines = [l.strip() for l in stripped.splitlines() if l.strip()]
+    if len(lines) <= 3:
+        for l in lines:
+            l_lower = l.lower()
+            if any(l_lower.startswith(p) for p in conversational_prefixes):
+                return True
+            if "inspect the file" in l_lower or "accurate line numbers" in l_lower or "apply the fix" in l_lower:
+                return True
+
+    return False
+
+
+def _validate_patch_safety_and_syntax(
+    diff_str: str,
+    expected_file_path: Optional[str] = None,
+    source_code: Optional[str] = None,
+) -> bool:
+    """
+    Enforces hard patch safety checks:
+      1. Rejects patches whose added lines are conversational prose or placeholders.
+      2. Rejects destructive patches deleting >50% of source lines without explicit replacement.
+      3. For Python files, verifies that the patched code compiles cleanly with ast.parse.
+    """
+    import ast
+
+    lines = diff_str.splitlines()
+    added_lines = [
+        l[1:].strip() for l in lines
+        if l.startswith("+") and not l.startswith("+++") and l[1:].strip()
+    ]
+    deleted_lines = [
+        l[1:].strip() for l in lines
+        if l.startswith("-") and not l.startswith("---") and l[1:].strip()
+    ]
+
+    # 1. Reject conversational additions
+    for al in added_lines:
+        if _is_conversational_or_placeholder(al):
+            logger.warning("[PATCH_SAFETY] Rejected diff containing conversational addition: %r", al)
+            return False
+
+    # 2. Check destructive deletion ratio
+    if source_code:
+        src_nonblank = [l for l in source_code.splitlines() if l.strip()]
+        if len(src_nonblank) >= 10:
+            if len(deleted_lines) > len(src_nonblank) * 0.5 and len(added_lines) < len(deleted_lines) * 0.3:
+                logger.warning(
+                    "[PATCH_SAFETY] Rejected destructive patch: deleted %d of %d lines with only %d added",
+                    len(deleted_lines), len(src_nonblank), len(added_lines),
+                )
+                return False
+
+        # 3. Syntax validation for Python files
+        if expected_file_path and expected_file_path.endswith(".py"):
+            try:
+                # Test in-memory patch application
+                test_lines = list(source_code.splitlines(keepends=True))
+                # Quick check if replacement is direct or simulated
+                from codefix.patch_safety import _apply_unified_diff_pure_python
+                import tempfile
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    t_root = Path(tmp_dir)
+                    t_file = t_root / Path(expected_file_path).name
+                    t_file.write_text(source_code, encoding="utf-8")
+                    ok, _, _ = _apply_unified_diff_pure_python(t_root, diff_str, target_file_hint=t_file.name)
+                    if ok:
+                        patched_src = t_file.read_text(encoding="utf-8", errors="replace")
+                        ast.parse(patched_src)
+            except SyntaxError as syn_err:
+                logger.warning("[PATCH_SAFETY] Rejected patch resulting in Python SyntaxError: %s", syn_err)
+                return False
+            except Exception as exc:
+                logger.debug("[PATCH_SAFETY] Patch syntax simulation note: %s", exc)
+
+    return True
+
+
 def clean_and_normalize_diff(
     raw: str,
     expected_file_path: Optional[str] = None,
@@ -104,12 +203,17 @@ def clean_and_normalize_diff(
     if start_idx is not None:
         candidate = "\n".join(lines[start_idx:]).strip()
         if _is_syntactically_valid_diff(candidate, expected_file_path):
-            return candidate, True
+            if _validate_patch_safety_and_syntax(candidate, expected_file_path, source_code):
+                return candidate, True
 
     # 3. If no direct unified diff headers, check if model returned full replacement code
     if source_code and expected_file_path:
         code_candidate = _extract_code_block(raw)
-        if code_candidate and code_candidate.strip() != source_code.strip():
+        if (
+            code_candidate
+            and not _is_conversational_or_placeholder(code_candidate)
+            and code_candidate.strip() != source_code.strip()
+        ):
             # Synthesize valid unified diff
             norm_path = expected_file_path.replace("\\", "/").strip().lstrip("/")
             src_lines = source_code.splitlines(keepends=True)
@@ -124,23 +228,32 @@ def clean_and_normalize_diff(
             )
             synthetic_diff = "".join(diff_lines).strip()
             if synthetic_diff and _is_syntactically_valid_diff(synthetic_diff, expected_file_path):
-                logger.info("Synthesized valid unified diff from full-file model replacement for %s", expected_file_path)
-                return synthetic_diff, True
+                if _validate_patch_safety_and_syntax(synthetic_diff, expected_file_path, source_code):
+                    logger.info("Synthesized valid unified diff from full-file model replacement for %s", expected_file_path)
+                    return synthetic_diff, True
 
     # Check if raw text directly qualifies
     if _is_syntactically_valid_diff(text, expected_file_path):
-        return text, True
+        if _validate_patch_safety_and_syntax(text, expected_file_path, source_code):
+            return text, True
 
     return text, False
 
 
 def _extract_code_block(text: str) -> Optional[str]:
-    """Extract code contents from markdown block if present."""
+    """Extract code contents from markdown block if present, ignoring conversational text."""
+    if _is_conversational_or_placeholder(text):
+        return None
+
     m = re.search(r"```(?:[a-zA-Z0-9_\-]+)?\s*\n([\s\S]+?)```", text)
     if m:
-        return m.group(1)
-    # If no fences, but looks like plain code (no conversational preamble)
-    if not any(text.startswith(p) for p in ("Here is", "I have", "To fix", "Sure", "Explanation:", "Below is")):
+        candidate = m.group(1)
+        if not _is_conversational_or_placeholder(candidate):
+            return candidate
+        return None
+
+    # If no fences, but looks like plain code
+    if not _is_conversational_or_placeholder(text):
         return text
     return None
 

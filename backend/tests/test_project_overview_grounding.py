@@ -119,7 +119,7 @@ def test_model_routing_for_project_overview():
     """Auto routing selects strong reasoning model for PROJECT_OVERVIEW."""
     route = get_model_for_task("PROJECT_OVERVIEW")
     assert route["provider"] in ("apinex", "nvidia", "groq")
-    assert route["modelId"] in ("free/gpt-6-luna", "glm-5-3", "deepseek-v4.1-flash", "openai/gpt-oss-120b")
+    assert route["modelId"] in ("free/gpt-6-luna", "gpt-6-luna", "glm-5-3", "deepseek-v4.1-flash", "openai/gpt-oss-120b")
     assert len(route["fallbackChain"]) >= 1
 
 

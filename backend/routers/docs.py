@@ -237,11 +237,15 @@ def generate_readme_endpoint(
         }
 
 
+_doc_gen_progress: Dict[str, Dict[str, Any]] = {}
+
+
 # ── POST /repos/{repo_id}/docs/master ─────────────────────────────────────────
 
 @repos_router.post("/{repo_id}/docs/master", status_code=200)
 def generate_master_docs_endpoint(
     repo_id: str,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -250,8 +254,41 @@ def generate_master_docs_endpoint(
 
     repo = get_user_repo(repo_id, db, current_user)
 
+    def on_progress(disp_num: int, total_sections: int, title: str):
+        pct = int(((disp_num - 1) / max(total_sections, 1)) * 100)
+        _doc_gen_progress[repo.id] = {
+            "status": "generating",
+            "percentage": pct,
+            "current_section": title,
+            "section_number": disp_num,
+            "completed": disp_num - 1,
+            "total": total_sections,
+        }
+
+    _doc_gen_progress[repo.id] = {
+        "status": "generating",
+        "percentage": 0,
+        "current_section": "Analyzing repository...",
+        "section_number": 0,
+        "completed": 0,
+        "total": 16,
+    }
+
     try:
-        suite = generate_full_project_documentation(repo.id, db)
+        suite = generate_full_project_documentation(
+            repo.id,
+            db,
+            resume=not force,
+            progress_callback=on_progress,
+        )
+        _doc_gen_progress[repo.id] = {
+            "status": "completed",
+            "percentage": 100,
+            "current_section": "Complete",
+            "section_number": len(suite.sections),
+            "completed": len(suite.sections),
+            "total": len(suite.sections),
+        }
         return {
             "repo_id": repo.id,
             "commit_sha": suite.commit_sha,
@@ -277,8 +314,36 @@ def generate_master_docs_endpoint(
             ],
         }
     except Exception as exc:
+        _doc_gen_progress[repo.id] = {
+            "status": "failed",
+            "percentage": 0,
+            "current_section": f"Failed: {exc}",
+            "completed": 0,
+            "total": 16,
+        }
         logger.exception("Master doc generation failed for %s", repo.id)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@repos_router.get("/{repo_id}/docs/progress", status_code=200)
+def get_doc_generation_progress_endpoint(
+    repo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve real-time percentage progress of documentation generation."""
+    repo = get_user_repo(repo_id, db, current_user)
+    prog = _doc_gen_progress.get(repo.id)
+    if not prog:
+        return {
+            "status": "idle",
+            "percentage": 0,
+            "current_section": "",
+            "section_number": 0,
+            "completed": 0,
+            "total": 16,
+        }
+    return prog
 
 
 # ── POST /repos/{repo_id}/docs/commit-to-repo ─────────────────────────────────

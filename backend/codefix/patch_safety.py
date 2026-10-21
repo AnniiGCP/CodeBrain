@@ -369,10 +369,64 @@ def apply_patch_safely(
                 return False, f"Write confirmation failed: modified file '{cf}' does not exist on disk.", {}
 
             new_text = cf_path.read_text(encoding="utf-8", errors="replace")
-            orig_text = backups.get(cf_path)
+            cf_resolved = cf_path.resolve()
+            orig_text = None
+            for b_path, b_content in backups.items():
+                if b_path.resolve() == cf_resolved:
+                    orig_text = b_content
+                    break
+
+            # Content checks
             if orig_text is not None and new_text == orig_text:
                 # No content change occurred
                 return False, f"Patch applied but produced zero content change in '{cf}'.", {}
+
+            # 1. Reject conversational text or placeholder lines
+            lower_new = new_text.strip().lower()
+            conversational_prefixes = (
+                "i'll", "i will", "let me", "i am", "in order to", "first,", "first ",
+                "step 1", "here is", "here's", "sure", "please", "as an ai", "wait,",
+                "todo:", "note:", "explanation:", "below is", "i have", "to fix",
+                "i need to", "inspect the file", "we can", "this patch", "here are",
+            )
+            if any(lower_new.startswith(p) for p in conversational_prefixes) or (
+                len(new_text.splitlines()) <= 3 and ("inspect the file" in lower_new or "apply the fix" in lower_new)
+            ):
+                for fpath, orig_content in backups.items():
+                    fpath.write_text(orig_content, encoding="utf-8")
+                return False, f"Safety violation: patched content in '{cf}' is conversational prose or placeholder text. Rollback enforced.", {}
+
+            # 2. Syntax validation
+            if cf.endswith(".py"):
+                import ast
+                try:
+                    parsed_ast = ast.parse(new_text)
+                except SyntaxError as syn_err:
+                    for fpath, orig_content in backups.items():
+                        fpath.write_text(orig_content, encoding="utf-8")
+                    return False, f"Safety violation: patched Python file '{cf}' contains syntax error ({syn_err}). Rollback enforced.", {}
+
+                # Check symbol preservation if original was non-trivial Python code
+                if orig_text:
+                    try:
+                        orig_ast = ast.parse(orig_text)
+                        orig_symbols = [n for n in ast.walk(orig_ast) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+                        new_symbols = [n for n in ast.walk(parsed_ast) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+                        if len(orig_symbols) >= 2 and len(new_symbols) == 0:
+                            for fpath, orig_content in backups.items():
+                                fpath.write_text(orig_content, encoding="utf-8")
+                            return False, f"Safety violation: patch deleted all functions and classes from '{cf}'. Rollback enforced.", {}
+                    except Exception:
+                        pass
+
+            # 3. Guard against destructive deletions (>50% line wipeout)
+            if orig_text:
+                orig_lines = [l for l in orig_text.splitlines() if l.strip()]
+                new_lines = [l for l in new_text.splitlines() if l.strip()]
+                if len(orig_lines) >= 10 and len(new_lines) < len(orig_lines) * 0.5:
+                    for fpath, orig_content in backups.items():
+                        fpath.write_text(orig_content, encoding="utf-8")
+                    return False, f"Safety violation: patch deleted {len(orig_lines) - len(new_lines)} lines (>50%) from '{cf}'. Rollback enforced.", {}
 
         return True, "", {
             "changed_files": changed_files,

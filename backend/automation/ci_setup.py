@@ -438,6 +438,7 @@ def analyze_repository_evidence(repo: Repo, db: Session) -> dict[str, Any]:
         has_node_files = any(p.endswith(".js") or p.endswith(".ts") or p.endswith(".tsx") or "package.json" in p for p in file_paths)
         if has_node_files:
             fe_path = "frontend" if any(p.startswith("frontend/") for p in file_paths) else ("client" if any(p.startswith("client/") for p in file_paths) else ".")
+            has_fe_tests = any(p for p in file_paths if "backend" not in p and ("test" in p or "spec" in p) and (p.endswith(".js") or p.endswith(".ts") or p.endswith(".tsx")))
             components.append({
                 "name": "Frontend UI",
                 "path": fe_path,
@@ -448,9 +449,9 @@ def analyze_repository_evidence(repo: Repo, db: Session) -> dict[str, Any]:
                 "lockfile": f"{fe_path}/package-lock.json" if fe_path != "." and f"{fe_path}/package-lock.json" in file_paths else "package-lock.json",
                 "install_command": "npm ci" if any("package-lock.json" in p for p in file_paths) else "npm install",
                 "build_command": "npm run build",
-                "lint_command": None,
-                "test_command": "npm test",
-                "has_test_suite": True,
+                "lint_command": "npm run lint" if any("eslint" in p for p in file_paths) else None,
+                "test_command": "npm test" if has_fe_tests else None,
+                "has_test_suite": has_fe_tests,
                 "evidence": ["package.json"],
             })
 
@@ -708,13 +709,19 @@ def _synthesize_deterministic_workflow(evidence: dict[str, Any]) -> str:
                     ])
 
             elif c_eco == "python":
-                lock_path = comp.get("lockfile") or "requirements.txt"
                 py_work_dir = "" if c_path == "." else c_path
+                raw_lock = comp.get("lockfile") or "requirements.txt"
+                if py_work_dir and not raw_lock.startswith(py_work_dir):
+                    lock_path = f"{py_work_dir}/{raw_lock}"
+                else:
+                    lock_path = raw_lock
                 lock_file_name = "requirements.txt"
                 lines.extend([
                     f"  {job_id}:",
                     f"    name: {c_name} Quality Gate",
                     "    runs-on: ubuntu-latest",
+                    "    env:",
+                    "      PYTHONPATH: .:${{ github.workspace }}",
                     "    steps:",
                     "      - name: Checkout code",
                     "        uses: actions/checkout@v4",
@@ -738,6 +745,8 @@ def _synthesize_deterministic_workflow(evidence: dict[str, Any]) -> str:
                     lines.extend([
                         "      - name: Run backend tests",
                         *( [f"        working-directory: {py_work_dir}"] if py_work_dir else [] ),
+                        "        env:",
+                        "          PYTHONPATH: .:${{ github.workspace }}",
                         f"        run: {comp['test_command']}",
                         "",
                     ])

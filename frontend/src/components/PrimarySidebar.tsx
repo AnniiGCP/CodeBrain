@@ -193,9 +193,10 @@ const PrimarySidebar: FC<PrimarySidebarProps> = ({
     }
   };
 
-  // Group errors by file
+  // Group active errors by file (excluding resolved)
+  const activeErrors = errors.filter((e) => e.fix_status !== "RESOLVED");
   const errorsByFile: Record<string, ErrorReport[]> = {};
-  for (const err of errors) {
+  for (const err of activeErrors) {
     const file = err.file_path || "General";
     if (!errorsByFile[file]) errorsByFile[file] = [];
     errorsByFile[file].push(err);
@@ -608,7 +609,7 @@ const PrimarySidebar: FC<PrimarySidebarProps> = ({
         <div className="flex flex-col h-full bg-[#0c0d0e]">
           <div className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#858585] border-b border-[#1e1f22] bg-[#0c0d0e] flex items-center justify-between">
             <span>Problems</span>
-            <span className="text-[11px] text-orange-400">{errors.length} Issues</span>
+            <span className="text-[11px] text-orange-400">{activeErrors.length} Issues</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 bg-[#0c0d0e]">

@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "lucide-react": "^1.33.0",
     "mermaid": "^11.16.1",
     "pdfjs-dist": "^4.10.38",

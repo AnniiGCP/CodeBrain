@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import DocumentationPage from "./pages/DocumentationPage";
@@ -111,6 +113,8 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Analytics />
+      <SpeedInsights />
     </BrowserRouter>
   );
 }

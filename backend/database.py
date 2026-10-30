@@ -190,8 +190,16 @@ def _run_init_db():
                     if "proposed_workflow_content" not in ciconf_cols:
                         conn.exec_driver_sql("ALTER TABLE repo_ci_configs ADD COLUMN proposed_workflow_content TEXT")
                     conn.commit()
+
+                res_syms = conn.exec_driver_sql("PRAGMA table_info(symbols)")
+                sym_cols = [row[1] for row in res_syms.fetchall()]
+                if sym_cols:
+                    if "embedding" not in sym_cols:
+                        conn.exec_driver_sql("ALTER TABLE symbols ADD COLUMN embedding TEXT")
+                    conn.commit()
             elif engine.dialect.name == "postgresql":
                 pg_migrations = [
+                    "ALTER TABLE symbols ADD COLUMN IF NOT EXISTS embedding TEXT",
                     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id)",
                     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS detected_ci BOOLEAN DEFAULT FALSE",
                     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS detected_ci_files TEXT",

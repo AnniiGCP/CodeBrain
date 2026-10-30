@@ -12,8 +12,45 @@ from __future__ import annotations
 import logging
 from collections import Counter, defaultdict
 from pathlib import Path
+import re
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_readme_text(text: str) -> str:
+    """
+    Sanitize generated README text by removing AI conversational preambles,
+    unwanted XML/document artifact tags (e.g. <WritingBlock>), and markdown fences.
+    """
+    if not text:
+        return ""
+    cleaned = text.strip()
+    # 1. Strip artifact tags like <WritingBlock ...> or </WritingBlock>
+    cleaned = re.sub(r"<\/?(?:WritingBlock|artifact|document|thought|antArtifact)[^>]*>", "", cleaned, flags=re.IGNORECASE)
+
+    # 2. Strip conversational preambles before the first markdown heading (# ...)
+    first_heading = re.search(r"(?m)^#\s+[^\n]+", cleaned)
+    if first_heading and first_heading.start() > 0:
+        preamble = cleaned[:first_heading.start()].strip()
+        conversational_markers = [
+            "below is",
+            "here is",
+            "sure",
+            "i have created",
+            "based strictly",
+            "written for",
+            "documents the",
+            "as requested",
+        ]
+        if any(marker in preamble.lower() for marker in conversational_markers):
+            cleaned = cleaned[first_heading.start():].strip()
+
+    # 3. If wrapped in outer code fences ```markdown ... ```, unwrap it
+    fence_match = re.match(r"^\s*```(?:markdown|md)?\s*\n([\s\S]*?)\n```\s*$", cleaned)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+
+    return cleaned.strip()
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
@@ -249,7 +286,7 @@ Write the complete project-specific README.md for {project_name} based strictly 
     logger.info("Generating professional README for repo %s (%d files)", repo_id, len(files))
     try:
         raw_readme = call_groq(messages, max_tokens=3500, temperature=0.15)
-        clean_readme = redact_secrets(raw_readme).strip()
+        clean_readme = sanitize_readme_text(redact_secrets(raw_readme))
         if clean_readme and len(clean_readme) > 200:
             return clean_readme
     except Exception as exc:

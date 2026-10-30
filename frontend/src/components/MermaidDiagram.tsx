@@ -114,19 +114,16 @@ export function sanitizeMermaidChart(rawChart: string, isChat: boolean = false):
       });
 
       // 4. Square: ID["..."] with inner brackets or quotes, or unquoted ID[...]
-      if (/^\s*[A-Za-z0-9_]+\[".*?"\]\s*(?:$|-->|---|==>)/.test(l)) {
-        l = l.replace(/(\b[A-Za-z0-9_]+\[")([\s\S]*?)("\])/g, (_, pre, content, post) => {
-          let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
-          clean = clean.replace(/\[/g, "(").replace(/\]/g, ")").replace(/"/g, "'");
-          return `${pre}${clean}${post}`;
-        });
-      } else {
-        l = l.replace(/(\b[A-Za-z0-9_]+)\[(?!\()\s*([^\]]*?)\s*\](?!\))/g, (_, id, content) => {
-          let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
-          clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")");
-          return `${id}["${clean}"]`;
-        });
-      }
+      l = l.replace(/(\b[A-Za-z0-9_]+)\["([^"]*)"\]/g, (_, id, content) => {
+        let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
+        clean = clean.replace(/\[/g, "(").replace(/\]/g, ")").replace(/•/g, "-");
+        return `${id}["${clean}"]`;
+      });
+      l = l.replace(/(\b[A-Za-z0-9_]+)\[(?!\()\s*([^\]"]*?)\s*\](?!\))/g, (_, id, content) => {
+        let clean = content.replace(/\\n/g, "<br/>").replace(/\n/g, "<br/>");
+        clean = clean.replace(/^["']|["']$/g, "").replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")").replace(/•/g, "-");
+        return `${id}["${clean}"]`;
+      });
 
       // 5. Rhombus / Decision: ID{ ... }
       l = l.replace(/(\b[A-Za-z0-9_]+)\{\s*(.*?)\s*\}/g, (_, id, content) => {
@@ -150,22 +147,149 @@ export function sanitizeMermaidChart(rawChart: string, isChat: boolean = false):
   return cleaned;
 }
 
+export function generateNativeFallbackSvg(chartText: string, title?: string): string {
+  if (!chartText || typeof chartText !== "string") return "";
+  const lines = chartText.split("\n");
+  const nodes: { id: string; label: string; sublabel?: string }[] = [];
+  const edges: { from: string; to: string; label?: string }[] = [];
+  const seenNodes = new Set<string>();
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("%%") || line.startsWith("graph") || line.startsWith("flowchart")) continue;
+
+    // Match edge: a -->|label| b or a --> b
+    const edgeMatch = line.match(/^([A-Za-z0-9_]+)\s*-->(?:\|(.*?)\|)?\s*([A-Za-z0-9_]+)/);
+    if (edgeMatch) {
+      const from = edgeMatch[1];
+      const lbl = edgeMatch[2] ? edgeMatch[2].trim() : undefined;
+      const to = edgeMatch[3];
+      edges.push({ from, to, label: lbl });
+      if (!seenNodes.has(from)) {
+        nodes.push({ id: from, label: from });
+        seenNodes.add(from);
+      }
+      if (!seenNodes.has(to)) {
+        nodes.push({ id: to, label: to });
+        seenNodes.add(to);
+      }
+      continue;
+    }
+
+    // Match node: id["label<br/>sublabel"] or id["label"] or id[label]
+    const nodeMatch = line.match(/^([A-Za-z0-9_]+)\s*\["([^"]*)"\]/) || line.match(/^([A-Za-z0-9_]+)\s*\["?(.*?)"?\]/);
+    if (nodeMatch) {
+      const id = nodeMatch[1];
+      const rawContent = nodeMatch[2] || id;
+      const parts = rawContent.split(/<br\s*\/?>/i);
+      const label = parts[0]?.trim() || id;
+      const sublabel = parts.slice(1).join(" • ").trim();
+
+      const existing = nodes.find((n) => n.id === id);
+      if (existing) {
+        existing.label = label;
+        existing.sublabel = sublabel;
+      } else {
+        nodes.push({ id, label, sublabel: sublabel || undefined });
+        seenNodes.add(id);
+      }
+    }
+  }
+
+  if (nodes.length === 0) {
+    return "";
+  }
+
+  // Layout calculation (multi-column responsive grid)
+  const nodeW = 190;
+  const nodeH = 68;
+  const padX = 36;
+  const padY = 56;
+  const cols = Math.min(3, Math.max(1, nodes.length));
+  const rows = Math.ceil(nodes.length / cols);
+  const totalW = Math.max(820, cols * (nodeW + padX) + padX);
+  const totalH = rows * (nodeH + padY) + padY + 30;
+
+  const posMap = new Map<string, { x: number; y: number }>();
+  nodes.forEach((node, idx) => {
+    const c = idx % cols;
+    const r = Math.floor(idx / cols);
+    const rowCount = Math.min(cols, nodes.length - r * cols);
+    const rowOffset = (totalW - (rowCount * (nodeW + padX) - padX)) / 2;
+    const x = rowOffset + c * (nodeW + padX);
+    const y = 36 + r * (nodeH + padY);
+    posMap.set(node.id, { x, y });
+  });
+
+  const svgParts: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="100%" height="${totalH}px" style="background:#090d16; border-radius:12px; font-family:ui-sans-serif,system-ui,sans-serif;">`,
+    `  <defs>`,
+    `    <marker id="fb-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">`,
+    `      <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />`,
+    `    </marker>`,
+    `    <filter id="fb-shadow" x="-5%" y="-5%" width="115%" height="115%">`,
+    `      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.5" />`,
+    `    </filter>`,
+    `  </defs>`,
+  ];
+
+  if (title) {
+    svgParts.push(`  <text x="36" y="24" fill="#a78bfa" font-size="12" font-weight="700" letter-spacing="0.02em">${title}</text>`);
+  }
+
+  // Draw edges
+  for (const edge of edges) {
+    const p1 = posMap.get(edge.from);
+    const p2 = posMap.get(edge.to);
+    if (!p1 || !p2) continue;
+    const startX = p1.x + nodeW / 2;
+    const startY = p1.y + nodeH;
+    const endX = p2.x + nodeW / 2;
+    const endY = p2.y;
+    svgParts.push(`  <path d="M ${startX} ${startY} C ${startX} ${startY + 26}, ${endX} ${endY - 26}, ${endX} ${endY}" stroke="#6b7280" stroke-width="1.5" fill="none" marker-end="url(#fb-arrow)" />`);
+    if (edge.label) {
+      const midX = (startX + endX) / 2;
+      const midY = (startY + endY) / 2;
+      svgParts.push(`  <rect x="${midX - 32}" y="${midY - 9}" width="64" height="18" rx="4" fill="#1e1e24" stroke="#374151" stroke-width="0.8" />`);
+      svgParts.push(`  <text x="${midX}" y="${midY + 4}" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="monospace">${edge.label}</text>`);
+    }
+  }
+
+  // Draw nodes
+  for (const node of nodes) {
+    const p = posMap.get(node.id);
+    if (!p) continue;
+    svgParts.push(`  <g filter="url(#fb-shadow)">`);
+    svgParts.push(`    <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="8" fill="#141720" stroke="#2e2e38" stroke-width="1.2" />`);
+    svgParts.push(`    <rect x="${p.x}" y="${p.y}" width="4" height="${nodeH}" rx="2" fill="#8b5cf6" />`);
+    svgParts.push(`    <text x="${p.x + 14}" y="${p.y + 25}" fill="#f3f4f6" font-size="12" font-weight="600">${node.label.length > 22 ? node.label.slice(0, 20) + "..." : node.label}</text>`);
+    if (node.sublabel) {
+      svgParts.push(`    <text x="${p.x + 14}" y="${p.y + 46}" fill="#9ca3af" font-size="10" font-family="monospace">${node.sublabel.length > 25 ? node.sublabel.slice(0, 23) + "..." : node.sublabel}</text>`);
+    }
+    svgParts.push(`  </g>`);
+  }
+
+  svgParts.push(`</svg>`);
+  return svgParts.join("\n");
+}
+
 export function repairMermaidSyntax(chart: string): string {
   let repaired = chart.trim();
   // Strip any raw HTML tags except <br/> (e.g. <small>...</small>, <span>, etc.)
   repaired = repaired.replace(/<\/?(?:small|span|div|b|i|font|p|em|strong|h\d)[^>]*>/gi, "");
   repaired = repaired.replace(/<br\s*\/?>/gi, "<br/>");
+  repaired = repaired.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/•/g, "-");
 
   const lines = repaired.split("\n");
   const processed: string[] = [];
-  for (const line of lines) {
-    let l = line.trim();
+  for (let i = 0; i < lines.length; i++) {
+    let l = lines[i].trim();
     if (!l) {
       processed.push("");
       continue;
     }
     // Clean inner unescaped quotes, bullets, and brackets in node labels
-    l = l.replace(/(\b[A-Za-z0-9_]+)\["(.*?)"\]/g, (_, id, content) => {
+    l = l.replace(/(\b[A-Za-z0-9_]+)\["([^"]*)"\]/g, (_, id, content) => {
       const clean = content.replace(/"/g, "'").replace(/\[/g, "(").replace(/\]/g, ")").replace(/•/g, "-");
       return `${id}["${clean}"]`;
     });
@@ -189,6 +313,15 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
     const sanitized = sanitizeMermaidChart(chart, isChat);
 
     if (!sanitized) {
+      const fallbackSvg = generateNativeFallbackSvg(chart, title);
+      if (fallbackSvg) {
+        if (isMounted) {
+          setSvgContent(fallbackSvg);
+          setCleanedDiagram(chart);
+          setError(null);
+        }
+        return;
+      }
       if (isMounted) {
         setSvgContent("");
         setCleanedDiagram("");
@@ -223,15 +356,25 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
                 setError(null);
               }
             })
-            .catch((fallbackErr) => {
-              if (isMounted) {
-                console.warn("Mermaid primary & repair error:", primaryErr, fallbackErr);
+            .catch(() => {
+              const fallbackSvg = generateNativeFallbackSvg(repaired || sanitized || chart, title);
+              if (fallbackSvg) {
+                if (isMounted) {
+                  setSvgContent(fallbackSvg);
+                  setError(null);
+                }
+              } else if (isMounted) {
                 setError(primaryErr?.message || "Failed to render diagram");
               }
             });
         } else {
-          if (isMounted) {
-            console.warn("Mermaid render error:", primaryErr);
+          const fallbackSvg = generateNativeFallbackSvg(sanitized || chart, title);
+          if (fallbackSvg) {
+            if (isMounted) {
+              setSvgContent(fallbackSvg);
+              setError(null);
+            }
+          } else if (isMounted) {
             setError(primaryErr?.message || "Failed to render diagram");
           }
         }
@@ -242,7 +385,7 @@ export default function MermaidDiagram({ chart, title, figureCaption, isChat = f
       document.querySelectorAll(`[id^="${id}"]`).forEach((el) => el.remove());
       document.querySelectorAll('.mermaid-error-svg, [id^="dmermaid"]').forEach((el) => el.remove());
     };
-  }, [chart, isChat]);
+  }, [chart, isChat, title]);
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.15, 2.5));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.15, 0.4));

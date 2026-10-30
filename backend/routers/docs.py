@@ -376,6 +376,125 @@ def commit_docs_to_repo_endpoint(
     }
 
 
+# ── POST /repos/{repo_id}/docs/commit-readme ─────────────────────────────────
+
+@repos_router.post("/{repo_id}/docs/commit-readme", status_code=200)
+def commit_readme_endpoint(
+    repo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Commit and push ONLY the generated README.md to the repository.
+    - For GitHub repos: creates branch 'docs/update-readme-<id>', commits README.md,
+      pushes to origin, opens PR with zero manual git steps.
+    - For Zip uploads: directly writes/applies README.md to local repo disk.
+    """
+    import uuid
+    import difflib
+    from auth import get_user_github_token
+    from automation.auto_fix_pipeline import _find_repo_root, _add_log
+    from gitops.git_ops import create_branch_and_commit
+    from gitops.pr_client import create_pull_request
+    from models import RepoReadme
+
+    repo = get_user_repo(repo_id, db, current_user)
+    saved_rm = db.query(RepoReadme).filter(RepoReadme.repo_id == repo.id).first()
+
+    docs_dir = STORAGE_ROOT / repo.id / "docs"
+    readme_file = docs_dir / "README.md"
+
+    content = ""
+    if saved_rm and saved_rm.content and saved_rm.content.strip():
+        content = saved_rm.content
+    elif readme_file.exists():
+        content = readme_file.read_text(encoding="utf-8")
+
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="No generated README.md found to commit. Click 'Generate README' first.")
+
+    source_type = getattr(repo, "source_type", "upload")
+    if source_type != "github":
+        repo_root = _find_repo_root(repo.id)
+        if not repo_root:
+            raise HTTPException(status_code=404, detail="Repository root directory not found on disk")
+
+        target_readme = repo_root / "README.md"
+        target_readme.write_text(content, encoding="utf-8")
+
+        _add_log(
+            repo_id=repo.id,
+            error_id=None,
+            stage="DOCS_COMMITTED",
+            outcome="SUCCESS",
+            message="README.md committed directly to local repository root.",
+            db=db,
+        )
+        return {
+            "status": "applied_local",
+            "message": "README.md successfully committed to local repository.",
+            "branch_name": None,
+            "commit_sha": None,
+            "pr_url": None,
+            "pr_number": None,
+            "pr_status": "NONE",
+        }
+
+    # GitHub repository
+    token = get_user_github_token(current_user)
+    branch_short_id = uuid.uuid4().hex[:8]
+    branch_name = f"docs/update-readme-{branch_short_id}"
+    commit_message = f"docs: update README.md for {repo.name} [skip ci]"
+
+    repo_root = _find_repo_root(repo.id) or (STORAGE_ROOT / repo.id)
+    existing_readme = (repo_root / "README.md").read_text(encoding="utf-8") if (repo_root / "README.md").exists() else ""
+
+    diff_lines = list(difflib.unified_diff(
+        existing_readme.splitlines(keepends=True),
+        content.splitlines(keepends=True),
+        fromfile="a/README.md",
+        tofile="b/README.md",
+    ))
+    patch = "".join(diff_lines)
+    if not patch:
+        patch = f"--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,{len(content.splitlines())} @@\n" + "".join([f"+{line}\n" for line in content.splitlines()])
+
+    branch_res = create_branch_and_commit(
+        repo_id=repo.id,
+        patch=patch,
+        branch_name=branch_name,
+        commit_message=commit_message,
+        token=token,
+    )
+
+    pr_url = None
+    pr_number = None
+    if branch_res.provider == "github":
+        try:
+            pr_res = create_pull_request(
+                repo_id=repo.id,
+                head_branch=branch_name,
+                base_branch=getattr(branch_res, "default_branch", "main"),
+                title="docs: update README.md",
+                body="## CodeBrain Automated Documentation\n\nUpdates developer `README.md` based on verified repository AST analysis.",
+                token=token,
+            )
+            pr_url = pr_res.pr_url
+            pr_number = pr_res.pr_number
+        except Exception as exc:
+            logger.warning("Failed to open PR for README commit: %s", exc)
+
+    return {
+        "status": "committed",
+        "message": "README.md committed and pushed successfully.",
+        "branch_name": branch_name,
+        "commit_sha": branch_res.commit_sha,
+        "pr_url": pr_url,
+        "pr_number": pr_number,
+        "pr_status": "OPEN" if pr_url else "NONE",
+    }
+
+
 # ── GET /repos/{repo_id}/docs/sections ─────────────────────────────────────────
 
 @repos_router.get("/{repo_id}/docs/sections", status_code=200)

@@ -46,6 +46,21 @@ def _load_faiss_index(repo_id: str):
 
     p = _index_path(repo_id)
     if not p.exists():
+        # Attempt to restore from Supabase Storage if configured
+        try:
+            from storage.supabase_client import is_supabase_storage_configured, SUPABASE_URL, SUPABASE_KEY, DEFAULT_BUCKET
+            if is_supabase_storage_configured():
+                import httpx
+                remote_url = f"{SUPABASE_URL}/storage/v1/object/{DEFAULT_BUCKET}/vectorstore/{repo_id}/faiss.index"
+                res = httpx.get(remote_url, headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}, timeout=10.0)
+                if res.status_code == 200:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(res.content)
+                    logger.info("Restored FAISS index for %s from Supabase Storage", repo_id)
+        except Exception as exc:
+            logger.debug("Could not restore FAISS index from Supabase for %s: %s", repo_id, exc)
+
+    if not p.exists():
         return None
     try:
         return faiss.read_index(str(p))
@@ -68,6 +83,17 @@ def _save_index(index, repo_id: str) -> None:
     p = _index_path(repo_id)
     p.parent.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(p))
+
+    # Also sync to Supabase Storage if configured
+    try:
+        from storage.supabase_client import upload_artifact_to_supabase
+        upload_artifact_to_supabase(
+            local_file_path=p,
+            remote_path=f"vectorstore/{repo_id}/faiss.index",
+            content_type="application/octet-stream",
+        )
+    except Exception as exc:
+        logger.debug("Supabase storage upload skipped for %s: %s", repo_id, exc)
 
 
 def _symbol_text(sym) -> str:
@@ -209,9 +235,11 @@ def embed_repo(repo_id: str, db) -> dict:
         index.add_with_ids(vecs, ids)
         stats["symbols_added"] += len(pending_symbols)
 
-        # 4) Mark symbols as embedded with current hash
-        for sym, c_hash in pending_symbols:
+        # 4) Mark symbols as embedded with current hash and persist exact vector floats
+        import json
+        for (sym, c_hash), vec in zip(pending_symbols, vecs):
             sym.embedded_file_hash = c_hash
+            sym.embedding = json.dumps([round(float(x), 6) for x in vec])
 
     db.commit()
     _save_index(index, repo_id)

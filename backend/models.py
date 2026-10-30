@@ -139,6 +139,7 @@ class Symbol(Base):
     source_code = Column(Text, nullable=False)
 
     embedded_file_hash = Column(String, nullable=True)
+    embedding = Column(Text, nullable=True)  # JSON-serialized 384-dim vector floats for Supabase / SQL inspection
 
     file = relationship("RepoFile", back_populates="symbols")
 

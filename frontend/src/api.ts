@@ -1101,6 +1101,17 @@ export async function commitDocsToRepo(repoId: string): Promise<CommitDocsRespon
   return res.json();
 }
 
+export async function commitReadmeToRepo(repoId: string): Promise<CommitDocsResponse> {
+  const res = await apiFetch(`${API_BASE}/repos/${repoId}/docs/commit-readme`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? "Failed to commit README.md to repository");
+  }
+  return res.json();
+}
+
 // ── Error Reports (Issues tab) ────────────────────────────────────────────────
 
 export async function fetchErrorReports(

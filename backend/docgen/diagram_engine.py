@@ -618,7 +618,7 @@ def build_database_tree_diagram_spec(graph) -> Optional[DiagramSpec]:
         nodes.append(DiagramNode(
             id=tbl_id,
             label=f"Table: {model.model_name}",
-            sublabel=f"PK: ({pks}) - {len(model.fields)} cols",
+            sublabel=f"PK: {pks} - {len(model.fields)} cols",
             kind="backend",
         ))
         edges.append(DiagramEdge(source=root_id, target=tbl_id, label="schema"))

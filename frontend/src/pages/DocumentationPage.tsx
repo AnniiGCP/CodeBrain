@@ -8,10 +8,11 @@ import {
   generateReadme,
   getFormatDownloadUrl,
   commitDocsToRepo,
+  commitReadmeToRepo,
   fetchDocGenProgress,
   type DocGenProgressResponse,
 } from "../api";
-import type { RepoSummary, DocSectionItem, DocValidationSummary, User } from "../types";
+import type { RepoSummary, DocSectionItem, DocValidationSummary, User, CommitDocsResponse } from "../types";
 import Navigation from "../components/Navigation";
 import MermaidDiagram from "../components/MermaidDiagram";
 import MarkdownRenderer from "../components/MarkdownRenderer";
@@ -29,6 +30,8 @@ import {
   Copy,
   Check,
   Send,
+  GitCommit,
+  ExternalLink,
 } from "lucide-react";
 
 interface DocumentationPageProps {
@@ -71,6 +74,21 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
   const [generatingReadme, setGeneratingReadme] = useState(false);
   const [readmeError, setReadmeError] = useState<string | null>(null);
   const inFlightReadmeRef = useRef<string | null>(null);
+  const [committingReadme, setCommittingReadme] = useState<boolean>(false);
+  const [readmeCommitResult, setReadmeCommitResult] = useState<CommitDocsResponse | null>(null);
+
+  const cleanedReadmeContent = useMemo(() => {
+    if (!readmeContent) return "";
+    let clean = readmeContent.replace(/<\/?(?:WritingBlock|artifact|document|thought|antArtifact)[^>]*>/gi, "");
+    const firstHeading = clean.search(/^#\s+/m);
+    if (firstHeading > 0) {
+      const preamble = clean.substring(0, firstHeading).toLowerCase();
+      if (["below is", "here is", "sure", "i have created", "based strictly", "written for", "documents the"].some((p) => preamble.includes(p))) {
+        clean = clean.substring(firstHeading);
+      }
+    }
+    return clean.trim();
+  }, [readmeContent]);
 
   // Action states
   const [loading, setLoading] = useState(false);
@@ -252,6 +270,20 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
     } finally {
       setGeneratingReadme(false);
       inFlightReadmeRef.current = null;
+    }
+  };
+
+  const handleCommitReadme = async () => {
+    if (!selectedRepoId || committingReadme) return;
+    setCommittingReadme(true);
+    setReadmeCommitResult(null);
+    try {
+      const res = await commitReadmeToRepo(selectedRepoId);
+      setReadmeCommitResult(res);
+    } catch (e: any) {
+      alert(`Commit README failed: ${e?.message || e}`);
+    } finally {
+      setCommittingReadme(false);
     }
   };
 
@@ -727,16 +759,53 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
                   <span>{generatingReadme ? "Regenerating..." : readmeContent ? "Regenerate README" : "Generate README"}</span>
                 </button>
                 {readmeContent && (
-                  <button
-                    onClick={() => handleCopyText(readmeContent)}
-                    className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#3c3c3c] text-gray-300 rounded-xl text-xs flex items-center gap-1.5 transition-colors border border-[#3c3c3c]"
-                  >
-                    {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                    <span>{copied ? "Copied" : "Copy"}</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={handleCommitReadme}
+                      disabled={committingReadme || !selectedRepoId}
+                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow transition-all border border-purple-500"
+                      title="Commit and push README.md to the repository"
+                    >
+                      <GitCommit size={13} className={committingReadme ? "animate-spin" : ""} />
+                      <span>{committingReadme ? "Committing..." : "Commit to Repo"}</span>
+                    </button>
+                    <button
+                      onClick={() => handleCopyText(cleanedReadmeContent || readmeContent)}
+                      className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#3c3c3c] text-gray-300 rounded-xl text-xs flex items-center gap-1.5 transition-colors border border-[#3c3c3c]"
+                    >
+                      {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      <span>{copied ? "Copied" : "Copy"}</span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>
+
+            {/* README Commit Success Banner */}
+            {readmeCommitResult && (
+              <div className="px-4 py-3 bg-purple-950/40 border border-purple-800/50 rounded-xl text-xs text-purple-200 flex items-center justify-between gap-3 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-purple-400 shrink-0" />
+                  <span>
+                    {readmeCommitResult.message || "README.md successfully committed to repository!"}
+                    {readmeCommitResult.branch_name && (
+                      <span className="ml-1 text-gray-300 font-mono">({readmeCommitResult.branch_name})</span>
+                    )}
+                  </span>
+                </div>
+                {readmeCommitResult.pr_url && (
+                  <a
+                    href={readmeCommitResult.pr_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1 bg-purple-800 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0"
+                  >
+                    <span>View Pull Request</span>
+                    <ExternalLink size={11} />
+                  </a>
+                )}
+              </div>
+            )}
 
             {/* Actionable Error Banner if generation failed (preserves previous content) */}
             {readmeError && !readmeError.toLowerCase().includes("method not allowed") && (
@@ -784,7 +853,7 @@ export const DocumentationPage: FC<DocumentationPageProps> = ({ user, onLogout }
               </div>
             ) : readmeContent ? (
               <div className="bg-[#252526] border border-[#3c3c3c] rounded-2xl p-8 shadow-xl">
-                <MarkdownRenderer content={readmeContent} />
+                <MarkdownRenderer content={cleanedReadmeContent || readmeContent} />
               </div>
             ) : (
               <div className="p-12 text-center bg-[#252526] border border-[#3c3c3c] rounded-2xl">

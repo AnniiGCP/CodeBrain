@@ -264,15 +264,3 @@ npm test -- --run
 # Validate production frontend build
 npm run build
 ```
-
----
-
-## 8. Author & Engineering Contact
-
-**Aniket Yadav**  
-*Computer Science & Design Engineer | Bengaluru, Karnataka, India*
-
-- **GitHub:** [@AnniiGCP](https://github.com/AnniiGCP)
-- **LinkedIn:** [linkedin.com/in/aniketyadav9099](https://linkedin.com/in/aniketyadav9099/)
-- **Email:** [aniketyadav0078@gmail.com](mailto:aniketyadav0078@gmail.com)
-- **Live Demo:** [https://codebrain-dev.vercel.app/](https://codebrain-dev.vercel.app/)

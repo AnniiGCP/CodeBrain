@@ -9,7 +9,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Tree-sitter](https://img.shields.io/badge/Tree--sitter-AST%20Parser-green?style=for-the-badge)](https://tree-sitter.github.io/)
 [![FAISS](https://img.shields.io/badge/FAISS-Vector%20Index-blue?style=for-the-badge)](https://github.com/facebookresearch/faiss)
-[![Tests](https://img.shields.io/badge/Tests-244%20Passed-success?style=for-the-badge&logo=pytest)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-248%20Passed-success?style=for-the-badge&logo=pytest)](backend/tests/)
 [![Docker](https://img.shields.io/badge/Docker-Sandboxed%20Execution-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
@@ -30,18 +30,18 @@ Navigating large, complex software repositories requires developers to manually 
 ```mermaid
 flowchart TD
     subgraph ClientLayer["Frontend Client (React 19 + TypeScript + Vite)"]
-        UI[Workspace SPA Dashboard]
-        Monaco[Monaco Code Editor]
-        ChatUI[Streaming Copilot Chat]
-        DocUI[16-Section Doc Viewer]
-        TermUI[Interactive WebSockets Terminal]
+        UI["Workspace SPA Dashboard"]
+        Monaco["Monaco Code Editor"]
+        ChatUI["Streaming Copilot Chat"]
+        DocUI["16-Section Doc Viewer"]
+        TermUI["Interactive WebSockets Terminal"]
     end
 
     subgraph GatewayLayer["API & Security Gateway (FastAPI)"]
-        MainApp[FastAPI Coordinator (main.py)]
-        SecHeaders[Security Headers Middleware (CSP, HSTS)]
-        RateLimiter[Sliding-Window Rate Limiter]
-        AuthService[Auth & Session Manager (Fernet + PBKDF2)]
+        MainApp["FastAPI Coordinator (main.py)"]
+        SecHeaders["Security Headers Middleware (CSP, HSTS)"]
+        RateLimiter["Sliding-Window Rate Limiter"]
+        AuthService["Auth & Session Manager (Fernet + PBKDF2)"]
     end
 
     subgraph Subsystems["Application Subsystems (APIRouters)"]
@@ -54,24 +54,24 @@ flowchart TD
     end
 
     subgraph EngineLayer["Core Analysis & AI Engines"]
-        TreeSitter[Tree-sitter AST Parser]
-        VectorEngine[Sentence-Transformers all-MiniLM-L6-v2]
-        FAISS[(FAISS FlatIP Vector Index)]
-        AIRouter[Centralized Multi-Provider Model Router]
-        SandboxRunner[Isolated Sandbox Execution Runtime]
+        TreeSitter["Tree-sitter AST Parser"]
+        VectorEngine["Sentence-Transformers all-MiniLM-L6-v2"]
+        FAISS[("FAISS FlatIP Vector Index")]
+        AIRouter["Centralized Multi-Provider Model Router"]
+        SandboxRunner["Isolated Sandbox Execution Runtime"]
     end
 
     subgraph ProviderLayer["External AI Providers & Services"]
-        NVIDIA[NVIDIA NIM (GLM 5.3, Nemotron)]
-        Groq[Groq (Llama 3.3 70B, Whisper)]
-        Anthropic[Anthropic (Claude 3.5 Sonnet)]
-        APInex[APInex (GPT-6 Luna)]
-        GitHub[GitHub REST & GraphQL API]
+        NVIDIA["NVIDIA NIM (GLM 5.3, Nemotron)"]
+        Groq["Groq (Llama 3.3 70B, Whisper)"]
+        Anthropic["Anthropic (Claude 3.5 Sonnet)"]
+        APInex["APInex (GPT-6 Luna)"]
+        GitHub["GitHub REST & GraphQL API"]
     end
 
     subgraph StorageLayer["Data & Index Persistence"]
-        DB[(Relational DB: SQLite / PostgreSQL)]
-        FileStore[(Local Storage / storage/repos)]
+        DB[("Relational DB: SQLite / PostgreSQL")]
+        FileStore[("Local Storage / storage/repos")]
     end
 
     UI --> SecHeaders --> MainApp
@@ -149,7 +149,7 @@ flowchart TD
 | **Vector Index** | FAISS (`faiss-cpu`) | Latest | High-speed dense similarity search |
 | **ORM & Database** | SQLAlchemy / SQLite / Postgres | Latest | Relational persistence for sessions and issues |
 | **Security & Crypto** | Cryptography (Fernet) | Latest | User token encryption at rest |
-| **Test Suite** | Pytest | Latest | 244 unit, integration, and security tests |
+| **Test Suite** | Pytest | Latest | 248 unit, integration, and security tests |
 
 ---
 
@@ -159,7 +159,7 @@ flowchart TD
 sequenceDiagram
     autonumber
     actor Dev as Developer
-    participant Client as Web Client (React 19)
+    participant Client as "Web Client (React 19)"
     participant API as FastAPI Gateway
     participant AST as Tree-sitter Parser
     participant Embed as Sentence-Transformers
@@ -247,7 +247,7 @@ npm run dev
 
 ## 7. Verification & Test Suite
 
-The codebase includes an extensive automated testing harness with **244 passing tests**:
+The codebase includes an extensive automated testing harness with **248 passing tests**:
 
 ```bash
 # Run complete backend pytest suite

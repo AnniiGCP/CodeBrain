@@ -266,15 +266,70 @@ def test_full_validation_on_qwen_llm_patch(tmp_path, monkeypatch):
 
 def test_isolated_runtime_enforced_in_production(monkeypatch):
     """When PUBLIC_DEPLOYMENT is enabled and Docker is unavailable, host execution is blocked."""
+    from execution.provider import reset_execution_provider
+    reset_execution_provider()
+
     monkeypatch.setenv("PUBLIC_DEPLOYMENT", "true")
+    monkeypatch.delenv("EXECUTION_PROVIDER", raising=False)
     monkeypatch.setattr("shutil.which", lambda bin_name: None)  # simulate docker missing
 
-    from codefix.sandbox import _execute_in_environment
-    retcode, out, err, timed_out, error_msg = _execute_in_environment(
-        cmd_str="pytest",
-        cmd_cwd=Path("."),
-        env={},
-    )
+    try:
+        from codefix.sandbox import _execute_in_environment
+        retcode, out, err, timed_out, error_msg = _execute_in_environment(
+            cmd_str="pytest",
+            cmd_cwd=Path("."),
+            env={},
+        )
 
-    assert retcode == -1
-    assert "Isolated container runtime (Docker) is unavailable" in error_msg
+        assert retcode == -1
+        assert "Isolated container runtime (Docker) is unavailable" in error_msg
+        assert "RUNTIME_UNAVAILABLE" in error_msg
+    finally:
+        reset_execution_provider()
+
+
+def test_subprocess_execution_blocked_in_production(monkeypatch):
+    """When in production, explicit EXECUTION_PROVIDER=subprocess is strictly blocked."""
+    from execution.provider import reset_execution_provider
+    reset_execution_provider()
+
+    monkeypatch.setenv("PUBLIC_DEPLOYMENT", "true")
+    monkeypatch.setenv("EXECUTION_PROVIDER", "subprocess")
+
+    try:
+        from codefix.sandbox import _execute_in_environment
+        retcode, out, err, timed_out, error_msg = _execute_in_environment(
+            cmd_str="pytest",
+            cmd_cwd=Path("."),
+            env={},
+        )
+
+        assert retcode == -1
+        assert "RUNTIME_UNAVAILABLE" in error_msg
+        assert "forbidden" in error_msg.lower() or "blocked" in error_msg.lower()
+    finally:
+        reset_execution_provider()
+
+
+def test_null_execution_provider_in_production(monkeypatch):
+    """When EXECUTION_PROVIDER=null is configured, host execution is safely disabled."""
+    from execution.provider import reset_execution_provider
+    reset_execution_provider()
+
+    monkeypatch.setenv("PUBLIC_DEPLOYMENT", "true")
+    monkeypatch.setenv("EXECUTION_PROVIDER", "null")
+
+    try:
+        from codefix.sandbox import _execute_in_environment
+        retcode, out, err, timed_out, error_msg = _execute_in_environment(
+            cmd_str="pytest",
+            cmd_cwd=Path("."),
+            env={},
+        )
+
+        assert retcode == -1
+        assert "RUNTIME_UNAVAILABLE" in error_msg
+        assert "disabled by configuration" in error_msg.lower()
+    finally:
+        reset_execution_provider()
+

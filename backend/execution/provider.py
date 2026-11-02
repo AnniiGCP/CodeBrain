@@ -832,7 +832,7 @@ def get_execution_provider(force_reload: bool = False) -> BaseExecutionProvider:
         elif pref == "subprocess":
             if strict_isolation:
                 _CACHED_PROVIDER = NullExecutionProvider(
-                    "Subprocess host execution is forbidden in production or when isolation is required."
+                    "Isolated container runtime (Docker) is unavailable. Subprocess host execution is forbidden in production or when isolation is required."
                 )
             else:
                 _CACHED_PROVIDER = SubprocessExecutionProvider()

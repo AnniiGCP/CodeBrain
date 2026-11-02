@@ -41,7 +41,7 @@ from database import SessionLocal
 from models import ErrorReport, Repo, AutomationLog
 from auth import get_user_github_token
 from errordetection.suggestion import generate_suggestion_for_report
-from codefix.sandbox import validate_diff, _apply_unified_diff
+from codefix.sandbox import validate_diff
 from codefix.patch_safety import (
     validate_patch_format_and_safety,
     apply_patch_safely,

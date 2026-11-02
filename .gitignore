@@ -142,3 +142,10 @@ scratch/
 frontend/dist/
 frontend/dist-ssr/
 frontend/.vite/
+
+# Academic Materials & Deliverables (Local delivery packages, do not track in source repo)
+academic-input/
+academic-inputs/
+academic-deliverables/
+demonstration-preparation/
+document-qa/

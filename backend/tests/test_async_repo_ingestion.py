@@ -36,11 +36,12 @@ def auth_user():
     token = data["token"]
     user = db.query(User).filter(User.id == u_id).first()
     yield user, token
-    # Cleanup
-    db.query(RepoFile).filter(RepoFile.repo_id.in_([r.id for r in user.repos])).delete(synchronize_session=False)
-    db.query(Repo).filter(Repo.user_id == user.id).delete(synchronize_session=False)
-    db.delete(user)
-    db.commit()
+    # Cleanup: cascade="all, delete-orphan" on User.repos automatically deletes child repos and files cleanly
+    db.expire_all()
+    u = db.query(User).filter(User.id == u_id).first()
+    if u:
+        db.delete(u)
+        db.commit()
     db.close()
 
 

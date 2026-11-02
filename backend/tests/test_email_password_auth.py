@@ -73,7 +73,8 @@ def test_register_and_login_flow():
     assert bad_login_res.status_code == 401
 
     # 8. Check /me with authenticated session
-    me_res = client.get("/me", cookies=login_user_res.cookies)
+    client.cookies.update(login_user_res.cookies)
+    me_res = client.get("/me")
     assert me_res.status_code == 200
     assert me_res.json()["github_username"] == test_username
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { API_BASE, registerUser, passwordLogin, devLogin } from "../api";
 import type { User } from "../types";
-import { CheckCircle2, Eye, EyeOff, Lock, Mail, User as UserIcon, ArrowRight, Terminal } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Lock, Mail, User as UserIcon, ArrowRight } from "lucide-react";
 
 interface LoginScreenProps {
   onLoginSuccess?: (user: User) => void;
@@ -10,6 +10,15 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onLoginSuccess, onDevLoginSuccess }: LoginScreenProps) {
   const handleSuccess = onLoginSuccess || onDevLoginSuccess;
+
+  // Local development detection: true only on local machine / dev mode, completely false on deployed website
+  const isLocalDev =
+    (import.meta.env.DEV ||
+      (typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1" ||
+          window.location.hostname === "0.0.0.0"))) &&
+    import.meta.env.VITE_HIDE_DEV_LOGIN !== "true";
 
   // Method / Tab state: "signin" | "signup"
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -298,34 +307,26 @@ export default function LoginScreen({ onLoginSuccess, onDevLoginSuccess }: Login
           </form>
         </div>
 
-        {/* Developer Bypass Login Section */}
-        <div className="pt-2 border-t border-[#2a2b2e]/80 space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-[#71717a]">
-            <span>Development Bypass</span>
-            <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">DEV MODE</span>
-          </div>
-
-          <button
-            id="auth-dev-bypass-btn"
-            type="button"
-            onClick={handleDevBypass}
-            disabled={loading}
-            className="w-full py-2.5 px-4 bg-[#202124] hover:bg-[#28292d] active:bg-[#1e1f21] text-amber-300 hover:text-amber-200 border border-amber-500/30 hover:border-amber-500/60 rounded-xl font-medium transition-all duration-150 flex items-center justify-center gap-2.5 shadow-sm cursor-pointer disabled:opacity-50 text-xs sm:text-sm group"
-          >
-            <Terminal size={14} className="text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
-            <span>Developer Bypass Login</span>
-          </button>
-          <p className="text-[10px] text-center text-[#71717a]">
-            Instant mock session bypass without requiring GitHub OAuth or credentials.
+        {/* Clean Neutral Footer */}
+        <div className="text-center text-[10px] text-[#71717a] pt-1">
+          <p>
+            CodeBrain &bull; AI Codebase Intelligence
+            {isLocalDev && (
+              <>
+                <span className="mx-1 text-[#3f3f46]">&bull;</span>
+                <button
+                  id="auth-dev-bypass-btn"
+                  type="button"
+                  onClick={handleDevBypass}
+                  disabled={loading}
+                  className="text-[#71717a] hover:text-purple-400 transition-colors cursor-pointer underline-offset-2 hover:underline inline"
+                >
+                  dev login
+                </button>
+              </>
+            )}
           </p>
         </div>
-
-
-
-        {/* Clean Neutral Footer (BCG786 removed) */}
-        <p className="text-center text-[10px] text-[#71717a]">
-          CodeBrain &bull; AI Codebase Intelligence
-        </p>
       </div>
     </div>
   );

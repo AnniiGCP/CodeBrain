@@ -21,6 +21,12 @@
 
 ---
 
+<div align="center">
+  <img src="./assets/readme-preview.png" alt="CodeBrain AI — Project Preview" width="100%" />
+</div>
+
+---
+
 ## 1. System Overview
 
 Navigating large, complex software repositories requires developers to manually parse call hierarchies, correlate dispersed documentation, diagnose obscure CI/CD build failures, and trace architectural boundaries.
